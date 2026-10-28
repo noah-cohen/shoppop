@@ -1,0 +1,22 @@
+{
+  "name": "sale-calendar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test",
+    "seed": "node seed.js",
+    "update-cities": "node update-cities.js",
+    "update-streets": "node update-streets.js",
+    "migrate:postgres": "node --env-file-if-exists=.env migrate-postgres.js",
+    "backup": "node --env-file-if-exists=.env backup.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "embedded-postgres": "17.10.0-beta.17"
+  }
+}
