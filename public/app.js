@@ -15,10 +15,10 @@ const state = {
   filters: { query: '', city: '', category: '', venue: '', store: '', outlet: '' },
   dayFilters: { query: '', city: '', category: '', venue: '', store: '', outlet: '' },
   cities: [], excludedCities: [],
-  submissions: [], messages: [],
+  submissions: [], messages: [], subscribers: [],
   adminSaleFilters: { period: '', store: '', city: '', venue: '' },
   favorites: { sales: [], stores: [] }, favoritesError: '',
-  account: { authenticated: false }, pendingEmail: '', pendingPurpose: '', accountMode: 'login', accountDemo: false,
+  account: { authenticated: false }, accountMode: 'login', accountDemo: false,
 };
 const israelDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' });
 const today = () => israelDate.format(new Date());
@@ -126,7 +126,9 @@ async function load() {
   state.authenticated = auth.authenticated;
   state.account = account;
   updateAccountLink();
-  [state.submissions, state.messages] = state.authenticated ? await Promise.all([api('submissions'), api('messages')]) : [[], []];
+  [state.submissions, state.messages, state.subscribers] = state.authenticated
+    ? await Promise.all([api('submissions'), api('messages'), api('subscribers')])
+    : [[], [], []];
   if (state.account.authenticated) {
     state.favorites = await api('user/favorites/sync', 'POST', state.favorites);
     try {
@@ -515,7 +517,7 @@ function profileFields(profile = {}, email = '') {
       <label class="choice-option"><input type="checkbox" name="updatesSales"${profile.updatesSales ? ' checked' : ''}><span>עדכונים על מכירות שסימנתי כמועדפות</span></label>
       <label class="choice-option"><input type="checkbox" name="updatesDaily"${profile.updatesDaily ? ' checked' : ''}><span>מייל יומי עם המכירות של אותו היום</span></label>
       <label class="choice-option"><input type="checkbox" name="updatesOutlet"${profile.updatesOutlet ? ' checked' : ''}><span>עדכונים על מכירות אאוטלט</span></label>
-      <p class="hint">העדפות העדכונים נשמרות כעת. השליחה האוטומטית תופעל כשהאתר יפורסם.</p>
+      <p class="hint">הבחירות נשמרות ברשימות העדכונים של מנהלת האתר. האתר אינו שולח מיילים.</p>
     </fieldset>
     <fieldset class="form-section profile-section"><legend>פרסומות</legend>
       <label class="choice-option"><input type="checkbox" name="adsConsent"${profile.adsConsent ? ' checked' : ''}><span>אני מסכימ/ה לקבל תוכן פרסומי במייל</span></label>
@@ -553,28 +555,11 @@ function accountPage() {
     main.innerHTML = `${accountTabs('profile')}<div class="page-heading account-page-heading"><div class="eyebrow">האזור האישי שלך</div><h1>האזור האישי של ${esc([profile.firstName, profile.lastName].filter(Boolean).join(' '))}.</h1><p>אפשר לערוך כאן את הפרטים האישיים ואת סוגי העדכונים שתרצי לקבל.</p></div><form id="account-profile-form" class="submission-form account-profile-form">${profileFields(profile, state.account.email)}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="user-logout">יציאה מהחשבון</button><button class="primary" type="submit">שמירת השינויים</button></div></form>`;
     return;
   }
-  if (state.pendingEmail && state.pendingPurpose === 'reset') {
-    main.innerHTML = `<div class="login account-card"><div class="eyebrow">איפוס סיסמה</div><h1>בחירת סיסמה חדשה.</h1><p>שלחנו קוד בן 6 ספרות אל <bdi>${esc(state.pendingEmail)}</bdi>.</p><form id="account-reset-form">${field('קוד האיפוס', 'code', '', 'text', true, 'inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" dir="ltr"')}${field('סיסמה חדשה — לפחות 10 תווים', 'password', '', 'password', true, 'minlength="10" autocomplete="new-password"')}${field('אימות הסיסמה החדשה', 'confirmPassword', '', 'password', true, 'minlength="10" autocomplete="new-password"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-back">חזרה</button><button class="primary" type="submit">איפוס הסיסמה</button></div></form></div>`;
-    return;
-  }
-  if (state.pendingEmail) {
-    const registration = state.pendingPurpose === 'register';
-    main.innerHTML = `<div class="login account-card"><div class="eyebrow">${registration ? 'אימות הרשמה' : 'כניסה חד־פעמית'}</div><h1>הזנת קוד.</h1><p>שלחנו קוד בן 6 ספרות אל <bdi>${esc(state.pendingEmail)}</bdi>. הקוד תקף ל־10 דקות.</p><form id="account-code-form">${field('קוד', 'code', '', 'text', true, 'inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" dir="ltr"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-back">חזרה</button><button class="primary" type="submit">${registration ? 'אישור הרשמה' : 'כניסה'}</button></div></form></div>`;
-    return;
-  }
   if (state.accountMode === 'register') {
-    main.innerHTML = `<div class="page-heading"><div class="eyebrow">יצירת חשבון חדש</div><h1>הרשמה.</h1></div><form id="account-register-form" class="submission-form"><div class="form-grid"><div class="full">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}</div>${field('סיסמה — לפחות 10 תווים', 'password', '', 'password', true, 'minlength="10" autocomplete="new-password"')}${field('אימות סיסמה', 'confirmPassword', '', 'password', true, 'minlength="10" autocomplete="new-password"')}</div>${profileFields()}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-login">כבר יש לי חשבון</button><button class="primary" type="submit">הרשמה ושליחת קוד אימות</button></div></form>`;
+    main.innerHTML = `<div class="page-heading"><div class="eyebrow">יצירת חשבון חדש</div><h1>הרשמה.</h1><p class="hint">המייל משמש לזיהוי החשבון ולשמירת העדפות בלבד. האתר אינו שולח הודעות מייל.</p></div><form id="account-register-form" class="submission-form"><div class="form-grid"><div class="full">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}</div>${field('סיסמה — לפחות 10 תווים', 'password', '', 'password', true, 'minlength="10" autocomplete="new-password"')}${field('אימות סיסמה', 'confirmPassword', '', 'password', true, 'minlength="10" autocomplete="new-password"')}</div>${profileFields()}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-login">כבר יש לי חשבון</button><button class="primary" type="submit">יצירת חשבון</button></div></form>`;
     return;
   }
-  if (state.accountMode === 'code') {
-    main.innerHTML = `<div class="login account-card"><div class="eyebrow">כניסה ללא סיסמה</div><h1>קוד למייל.</h1><form id="account-code-request-form">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-login">חזרה</button><button class="primary" type="submit">שליחת קוד כניסה</button></div></form></div>`;
-    return;
-  }
-  if (state.accountMode === 'reset') {
-    main.innerHTML = `<div class="login account-card"><div class="eyebrow">שכחתי סיסמה</div><h1>איפוס סיסמה.</h1><form id="account-reset-request-form">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-login">חזרה</button><button class="primary" type="submit">שליחת קוד איפוס</button></div></form></div>`;
-    return;
-  }
-  main.innerHTML = `<div class="login account-card"><div class="eyebrow">טוב לראות אותך</div><h1>התחברות.</h1><form id="account-login-form">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}${field('סיסמה', 'password', '', 'password', true, 'autocomplete="current-password"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">התחברות</button></div></form><div class="account-options"><button class="primary" type="button" data-action="account-demo">כניסה לתצוגת ניסיון</button><button class="text-button" type="button" data-action="account-register">הרשמה לחשבון חדש</button><button class="text-button" type="button" data-action="account-code">כניסה חד־פעמית עם קוד למייל</button><button class="text-button" type="button" data-action="account-reset">שכחתי סיסמה</button></div></div>`;
+  main.innerHTML = `<div class="login account-card"><div class="eyebrow">טוב לראות אותך</div><h1>התחברות.</h1><form id="account-login-form">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}${field('סיסמה', 'password', '', 'password', true, 'autocomplete="current-password"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">התחברות</button></div></form><div class="account-options"><button class="primary" type="button" data-action="account-demo">כניסה לתצוגת ניסיון</button><button class="text-button" type="button" data-action="account-register">הרשמה לחשבון חדש</button></div><p class="hint">המייל משמש לזיהוי החשבון בלבד. האתר אינו שולח הודעות מייל או קודי כניסה.</p></div>`;
 }
 function storesPage() {
   main.innerHTML = `<div class="page-heading"><h1>מדריך החנויות.</h1></div>${filterToolbar(state.filters)}<div id="results"></div>`;
@@ -592,7 +577,15 @@ function storePage(id) {
     <div class="section-heading"><h2>המכירות הבאות <span class="count">${future.length}</span></h2></div><div class="cards">${future.length ? future.map(s => saleCard(s)).join('') : empty('ניפגש במכירה הבאה', 'עדיין לא פורסמו מכירות נוספות לחנות.')}</div>
     <div class="section-heading"><h2>מכירות שכבר היו <span class="count">${past.length}</span></h2></div><div class="cards">${past.length ? past.map(s => saleCard(s)).join('') : empty('ההיסטוריה מתחילה כאן', 'אין מכירות קודמות לחנות.')}</div>`;
 }
-const adminNames = { stores: 'חנויות', venues: 'אולמות', sales: 'מכירות', submissions: 'בקשות לפרסום', messages: 'הודעות' };
+const adminNames = { stores: 'חנויות', venues: 'אולמות', sales: 'מכירות', submissions: 'בקשות לפרסום', messages: 'הודעות', subscribers: 'רשימות עדכונים' };
+const subscriberGroups = [
+  ['updatesCity', 'מכירות בעיר שלי'],
+  ['updatesFavorites', 'חנויות מועדפות'],
+  ['updatesSales', 'מכירות מועדפות'],
+  ['updatesDaily', 'רשימת המכירות היומית'],
+  ['updatesOutlet', 'מכירות אאוטלט'],
+  ['adsConsent', 'תוכן פרסומי'],
+];
 const messageClock = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', year: 'numeric',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -615,10 +608,14 @@ function adminSalesToolbar() {
 function adminResults() {
   const type = state.adminType;
   const singular = { stores: 'חנות', venues: 'אולם', sales: 'מכירה' };
-  const records = type === 'submissions' ? state.submissions : type === 'messages' ? state.messages : type === 'sales'
+  const records = type === 'submissions' ? state.submissions : type === 'messages' ? state.messages : type === 'subscribers' ? state.subscribers : type === 'sales'
     ? filterAdminSales(state.data.sales, state.adminSaleFilters, state.data.venues, today()) : state.data[type];
-  const heading = `<div class="section-heading"><h2>${adminNames[type]}</h2>${type === 'sales' ? `<span class="hint" role="status">${records.length} מתוך ${state.data.sales.length} מכירות</span>` : ''}${type === 'submissions' ? '<span class="hint">פרטי קשר ומודעות בבקשות גלויים למנהלת בלבד.</span>' : type === 'messages' ? '<button type="button" class="secondary" data-action="refresh-messages">רענון הודעות</button>' : `<button class="primary" data-action="add" data-type="${type}">הוספת ${singular[type]}</button>`}</div>`;
+  const heading = `<div class="section-heading"><h2>${adminNames[type]}</h2>${type === 'sales' ? `<span class="hint" role="status">${records.length} מתוך ${state.data.sales.length} מכירות</span>` : ''}${type === 'submissions' ? '<span class="hint">פרטי קשר ומודעות בבקשות גלויים למנהלת בלבד.</span>' : type === 'messages' ? '<button type="button" class="secondary" data-action="refresh-messages">רענון הודעות</button>' : type === 'subscribers' ? `<span class="hint">${records.length} חשבונות רשומים</span>` : `<button class="primary" data-action="add" data-type="${type}">הוספת ${singular[type]}</button>`}</div>`;
   if (type === 'messages') return `${heading}<p class="hint">פניות מטופס יצירת הקשר. ההודעות ופרטי הקשר פרטיים למנהלת בלבד; לא נשלחת הודעה למייל.</p>${records.length ? records.map(item => `<article class="admin-row${item.read ? '' : ' unread-message'}"><div><strong>${esc(item.subject)}</strong><small>${esc(item.name)} · ${esc(messageDate(item.created))} · ${item.read ? 'נקראה' : 'חדשה'}</small></div><button type="button" class="secondary" data-action="open-message" data-id="${item.id}">פתיחת הודעה</button></article>`).join('') : empty('אין עדיין הודעות', 'פניות שישלחו דרך טופס יצירת הקשר יופיעו כאן.')}`;
+  if (type === 'subscribers') return `${heading}<p class="hint">הרשימות פרטיות למנהלת ומציגות את המיילים לפי הבחירות שנשמרו בחשבון. האתר אינו שולח אליהן מיילים.</p>${subscriberGroups.map(([key, label]) => {
+    const members = records.filter(item => item.profile[key]);
+    return `<section class="detail-panel"><div class="section-heading"><h3>${label}</h3><span class="count">${members.length}</span></div>${members.length ? members.map(item => `<article class="admin-row"><div><strong><bdi>${esc(item.email)}</bdi></strong><small>${esc(`${item.profile.firstName} ${item.profile.lastName}`)} · ${esc(item.profile.city)}</small></div></article>`).join('') : '<p class="hint">אין נרשמים ברשימה זו.</p>'}</section>`;
+  }).join('')}`;
   return `${heading}${records.length ? records.map(item => type === 'submissions' ? `<article class="admin-row"><div><strong>${esc(item.title)}</strong><small>${esc(item.storeNames.join(' · '))} — ${esc(item.city)} · ${item.status === 'pending' ? 'ממתינה לאישור' : item.status === 'approved' ? 'אושרה' : 'נדחתה'}</small></div><button class="secondary" data-action="review-submission" data-id="${item.id}">${item.status === 'pending' ? 'פתיחה והעברה ליצירת מכירה' : 'בדיקת הבקשה'}</button></article>` : `<article class="admin-row"><div><strong>${esc(item.title || item.name)}</strong><small>${type === 'sales' ? `${esc(venueById(item.venueId)?.name)} · ${esc(venueById(item.venueId)?.city)} · ${dateMarkup(item.days[0].date)}${item.days.length > 1 ? ` — ${dateMarkup(item.days.at(-1).date)}` : ''} · ${item.stores.length} חנויות` : type === 'venues' ? `${esc(item.city)} · ${esc(item.address)}` : esc(item.categories.join(' · '))}</small>${type === 'sales' ? statusBlock(item) : ''}</div><div class="actions">${type === 'sales' ? `<button class="secondary" data-action="duplicate-sale" data-id="${item.id}">שכפול לתאריכים חדשים</button>` : ''}<button class="secondary" data-action="edit" data-type="${type}" data-id="${item.id}">עריכה</button><button class="danger" data-action="delete" data-type="${type}" data-id="${item.id}">מחיקה</button></div></article>`).join('') : type === 'sales' && state.data.sales.length ? empty('לא נמצאו מכירות לסינון הזה', 'אפשר לשנות או לנקות את המסננים כדי להציג מכירות נוספות.') : empty('עדיין אין כאן רשומות', type === 'submissions' ? 'בקשות שיישלחו דרך האתר יופיעו כאן לבדיקה.' : 'התחילי בהוספה באמצעות הכפתור למעלה.')}`;
 }
 function adminPage() {
@@ -628,7 +625,7 @@ function adminPage() {
   }
   main.innerHTML = `<div class="page-heading split-title"><div><div class="eyebrow">מאחורי הקלעים</div><h1>האתר בידיים שלך.</h1></div><div class="actions"><button class="secondary" data-action="password">החלפת סיסמה</button><button class="secondary" data-action="logout">יציאה</button></div></div>
     <div class="admin-notice">להוספת מכירה: צרי תחילה את החנויות המשתתפות ואת האולם, ולאחר מכן קשרי ביניהם במכירה. נתוני הדוגמה, אם נטענו, מסומנים במפורש.</div>
-    <div class="admin-tabs">${Object.entries(adminNames).map(([type, name]) => `<button class="secondary${state.adminType === type ? ' active' : ''}" data-action="admin-type" data-type="${type}">${name} (${type === 'submissions' ? state.submissions.filter(item => item.status === 'pending').length : type === 'messages' ? `${state.messages.filter(item => !item.read).length} חדשות` : state.data[type].length})</button>`).join('')}</div>
+    <div class="admin-tabs">${Object.entries(adminNames).map(([type, name]) => `<button class="secondary${state.adminType === type ? ' active' : ''}" data-action="admin-type" data-type="${type}">${name} (${type === 'submissions' ? state.submissions.filter(item => item.status === 'pending').length : type === 'messages' ? `${state.messages.filter(item => !item.read).length} חדשות` : type === 'subscribers' ? state.subscribers.length : state.data[type].length})</button>`).join('')}</div>
     ${state.adminType === 'sales' ? adminSalesToolbar() : ''}<div id="admin-results">${adminResults()}</div>`;
 }
 function contactPage() {
@@ -1318,7 +1315,7 @@ document.addEventListener('click', async event => {
     location.hash = 'account';
     return;
   }
-  if (action === 'account-login') { state.accountMode = 'login'; state.pendingEmail = ''; state.pendingPurpose = ''; accountPage(); return; }
+  if (action === 'account-login') { state.accountMode = 'login'; accountPage(); return; }
   if (action === 'account-demo') {
     state.accountDemo = true;
     updateAccountLink();
@@ -1334,9 +1331,6 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'account-register') { state.accountMode = 'register'; accountPage(); return; }
-  if (action === 'account-code') { state.accountMode = 'code'; accountPage(); return; }
-  if (action === 'account-reset') { state.accountMode = 'reset'; accountPage(); return; }
-  if (action === 'account-back') { state.pendingEmail = ''; state.pendingPurpose = ''; accountPage(); return; }
   if (action === 'edit-profile') { state.accountMode = 'edit-profile'; accountPage(); return; }
   if (action === 'cancel-profile') { state.accountMode = 'login'; accountPage(); return; }
   if (action === 'sale') return openSale(Number(id));
@@ -1506,7 +1500,7 @@ document.addEventListener('click', async event => {
         catch { openDialog('קישור לשיתוף המכירה', `${field('העתיקו את הקישור', 'shareUrl', url, 'text', false, 'readonly dir="ltr"')}`); }
       }
     }
-    if (action === 'logout') { await api('logout', 'POST', {}); state.authenticated = false; state.messages = []; state.submissions = []; adminPage(); }
+    if (action === 'logout') { await api('logout', 'POST', {}); state.authenticated = false; state.messages = []; state.submissions = []; state.subscribers = []; adminPage(); }
     if (action === 'user-logout') {
       const accountCity = state.account.profile?.city;
       await api('account/logout', 'POST', {});
@@ -1515,8 +1509,6 @@ document.addEventListener('click', async event => {
         state.filters.city = '';
         state.filters.venue = '';
       }
-      state.pendingEmail = '';
-      state.pendingPurpose = '';
       state.accountMode = 'login';
       updateAccountLink();
       accountPage();
@@ -1551,9 +1543,8 @@ document.addEventListener('submit', async event => {
   const form = event.target;
   if (![
     'login-form', 'entity-form', 'password-form', 'submission-form', 'contact-form',
-    'account-login-form', 'account-register-form', 'account-code-request-form',
-    'account-code-form', 'account-reset-request-form', 'account-reset-form', 'account-profile-form',
-    'account-demo-profile-form',
+    'account-login-form', 'account-register-form',
+    'account-profile-form', 'account-demo-profile-form',
   ].includes(form.id)) return;
   event.preventDefault();
   if (form.dataset.saving === 'true') return;
@@ -1584,46 +1575,10 @@ document.addEventListener('submit', async event => {
       if (values.get('password') !== values.get('confirmPassword')) throw new Error('הסיסמאות אינן תואמות');
       const email = values.get('email').trim().toLowerCase();
       await api('account/register', 'POST', { email, password: values.get('password'), profile: profileFromForm(form) });
-      state.pendingEmail = email;
-      state.pendingPurpose = 'register';
-      accountPage();
-      main.querySelector('[name=code]').focus();
-    } else if (form.id === 'account-code-request-form') {
-      const email = new FormData(form).get('email').trim().toLowerCase();
-      await api('account/request-code', 'POST', { email });
-      state.pendingEmail = email;
-      state.pendingPurpose = 'login';
-      accountPage();
-      main.querySelector('[name=code]').focus();
-    } else if (form.id === 'account-code-form') {
-      const endpoint = state.pendingPurpose === 'register' ? 'account/register/verify' : 'account/verify';
-      await api(endpoint, 'POST', { email: state.pendingEmail, code: new FormData(form).get('code').trim() });
-      state.pendingEmail = '';
-      state.pendingPurpose = '';
       await load();
       state.accountMode = 'login';
       accountPage();
-      toast('התחברת והמועדפים סונכרנו');
-    } else if (form.id === 'account-reset-request-form') {
-      const email = new FormData(form).get('email').trim().toLowerCase();
-      await api('account/reset/request', 'POST', { email });
-      state.pendingEmail = email;
-      state.pendingPurpose = 'reset';
-      accountPage();
-      main.querySelector('[name=code]').focus();
-    } else if (form.id === 'account-reset-form') {
-      const values = new FormData(form);
-      if (values.get('password') !== values.get('confirmPassword')) throw new Error('הסיסמאות אינן תואמות');
-      await api('account/reset', 'POST', {
-        email: state.pendingEmail,
-        code: values.get('code').trim(),
-        password: values.get('password'),
-      });
-      state.pendingEmail = '';
-      state.pendingPurpose = '';
-      state.accountMode = 'login';
-      accountPage();
-      toast('הסיסמה עודכנה. אפשר להתחבר עם הסיסמה החדשה.');
+      toast('החשבון נוצר והעדפות העדכונים נשמרו');
     } else if (form.id === 'account-demo-profile-form') {
       toast('בתצוגת הניסיון השינויים אינם נשמרים');
     } else if (form.id === 'account-profile-form') {

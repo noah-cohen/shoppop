@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { readAll, mediaIsPublished, pruneUnusedMedia, saveSale } from './database.js';
 import { openStorage } from './storage.js';
 import { InputError, validateStoredEntity, validateSubmission, validateContactMessage, parseImage } from './validation.js';
@@ -17,9 +17,6 @@ const storage = await openStorage({
   requirePostgres: process.env.RENDER === 'true',
 });
 const secureCookie = process.env.COOKIE_SECURE === 'true';
-if (process.env.RENDER === 'true' && (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)) {
-  throw new Error('Set RESEND_API_KEY and EMAIL_FROM privately before deploying to Render');
-}
 const hash = value => createHash('sha256').update(value).digest('hex');
 const passwordHash = password => {
   const salt = randomBytes(16).toString('hex');
@@ -49,7 +46,6 @@ const verifyPassword = (password, stored) => {
 }
 const attempts = new Map();
 const userLoginAttempts = new Map();
-const codeRequestAttempts = new Map();
 const submissionAttempts = new Map();
 const messageAttempts = new Map();
 const json = (res, status, value) => {
@@ -73,32 +69,6 @@ const normalizeEmail = value => {
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError('יש להזין כתובת דוא״ל תקינה');
   return email;
 };
-const testEmailAuth = process.env.AUTH_TEST_CODE && process.env.NODE_ENV === 'test' && process.env.RENDER !== 'true';
-const loginCode = () => testEmailAuth ? process.env.AUTH_TEST_CODE : String(randomInt(100000, 1000000));
-async function sendLoginCode(email, code, purpose) {
-  if (testEmailAuth) return;
-  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) throw new Error('Email sign-in is not configured');
-  const labels = {
-    register: ['אימות ההרשמה', 'קוד אימות ההרשמה שלך'],
-    login: ['קוד הכניסה שלך', 'קוד הכניסה החד־פעמי שלך'],
-    reset: ['איפוס הסיסמה', 'קוד איפוס הסיסמה שלך'],
-  };
-  const [subject, description] = labels[purpose];
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM,
-      to: [email],
-      subject: `${subject} ל־ShopPop`,
-      text: `${description} הוא: ${code}\n\nהקוד תקף ל-10 דקות. אם לא ביקשת אותו, אפשר להתעלם מההודעה.`,
-    }),
-  });
-  if (!response.ok) {
-    console.error(`Resend rejected login email with status ${response.status}`);
-    throw new Error('Could not send login email');
-  }
-}
 const validateUserPassword = value => {
   if (typeof value !== 'string' || value.length < 10 || value.length > 1000) {
     throw new InputError('הסיסמה צריכה להכיל לפחות 10 תווים');
@@ -136,44 +106,6 @@ const profileValue = value => {
     adsConsent: boolean('adsConsent'),
   };
 };
-async function issueAuthCode(db, req, email, purpose) {
-  const now = Date.now();
-  for (const [entryKey, value] of codeRequestAttempts) if (value.until <= now) codeRequestAttempts.delete(entryKey);
-  const limits = [[`ip:${req.socket.remoteAddress}`, 10], [`email:${email}`, 5]];
-  if (limits.some(([key, maximum]) => (codeRequestAttempts.get(key)?.count || 0) >= maximum)) {
-    throw Object.assign(new Error('נשלחו יותר מדי קודים. אפשר לנסות שוב בעוד 15 דקות.'), { status: 429 });
-  }
-  for (const [key] of limits) {
-    const attempt = codeRequestAttempts.get(key) || { count: 0, until: now + 15 * 60_000 };
-    attempt.count++;
-    codeRequestAttempts.set(key, attempt);
-  }
-  const code = loginCode();
-  const codeHash = passwordHash(code);
-  await db.prepare(`INSERT INTO auth_codes (email,purpose,hash,expires,attempts,requested) VALUES (?,?,?,?,?,?)
-    ON CONFLICT(email,purpose) DO UPDATE SET hash=excluded.hash,expires=excluded.expires,attempts=0,requested=excluded.requested`)
-    .run(email, purpose, codeHash, now + 10 * 60_000, 0, now);
-  try {
-    await sendLoginCode(email, code, purpose);
-  } catch (error) {
-    await db.prepare('DELETE FROM auth_codes WHERE email=? AND purpose=? AND hash=?').run(email, purpose, codeHash);
-    throw error;
-  }
-}
-async function verifyAuthCode(db, email, purpose, code) {
-  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) throw new InputError('יש להזין קוד בן 6 ספרות');
-  const now = Date.now();
-  const saved = await db.prepare('SELECT hash,expires,attempts FROM auth_codes WHERE email=? AND purpose=?').get(email, purpose);
-  if (!saved || saved.expires <= now || saved.attempts >= 5) {
-    await db.prepare('DELETE FROM auth_codes WHERE email=? AND purpose=?').run(email, purpose);
-    return false;
-  }
-  if (!verifyPassword(code, saved.hash)) {
-    await db.prepare('UPDATE auth_codes SET attempts=attempts+1 WHERE email=? AND purpose=?').run(email, purpose);
-    return false;
-  }
-  return true;
-}
 async function startUserSession(db, userId, now = Date.now()) {
   await db.prepare('DELETE FROM user_sessions WHERE expires<=?').run(now);
   const token = randomBytes(32).toString('hex');
@@ -256,47 +188,31 @@ const server = http.createServer(async (req, res) => {
         const email = normalizeEmail(data?.email);
         const password = validateUserPassword(data?.password);
         const profile = profileValue(data?.profile);
-        if (await db.prepare(`SELECT 1 FROM users JOIN user_credentials ON user_credentials.user_id=users.id
-          WHERE users.email=?`).get(email)) {
+        if (await db.prepare('SELECT 1 FROM users WHERE email=?').get(email)) {
           return json(res, 409, { error: 'כבר קיים חשבון עם כתובת המייל הזו. אפשר להתחבר.' });
         }
         const now = Date.now();
-        await db.prepare(`INSERT INTO pending_registrations (email,password_hash,profile,expires) VALUES (?,?,?,?)
-          ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash,profile=excluded.profile,expires=excluded.expires`)
-          .run(email, passwordHash(password), JSON.stringify(profile), now + 15 * 60_000);
-        try {
-          await issueAuthCode(db, req, email, 'register');
-        } catch (error) {
-          await db.prepare('DELETE FROM pending_registrations WHERE email=?').run(email);
-          throw error;
-        }
-        return json(res, 200, { ok: true });
-      }
-      if (path === '/api/account/register/verify' && req.method === 'POST') {
-        const data = await body(req, 4096);
-        const email = normalizeEmail(data?.email);
-        if (!await verifyAuthCode(db, email, 'register', data?.code)) {
-          return json(res, 401, { error: 'הקוד שגוי או שפג תוקפו. יש לבקש קוד חדש.' });
-        }
-        const now = Date.now();
-        const pending = await db.prepare('SELECT password_hash,profile,expires FROM pending_registrations WHERE email=?').get(email);
-        if (!pending || pending.expires <= now) return json(res, 401, { error: 'ההרשמה פגה. יש למלא את הטופס מחדש.' });
         await db.exec('BEGIN');
         let token;
         try {
           const user = await db.prepare(`INSERT INTO users (email,created,last_login) VALUES (?,?,?)
-            ON CONFLICT(email) DO UPDATE SET last_login=excluded.last_login RETURNING id`).get(email, now, now);
-          await db.prepare(`INSERT INTO user_credentials (user_id,password_hash) VALUES (?,?)
-            ON CONFLICT(user_id) DO UPDATE SET password_hash=excluded.password_hash`).run(user.id, pending.password_hash);
-          await db.prepare(`INSERT INTO user_profiles (user_id,data,updated) VALUES (?,?,?)
-            ON CONFLICT(user_id) DO UPDATE SET data=excluded.data,updated=excluded.updated`).run(user.id, pending.profile, now);
-          await db.prepare('DELETE FROM pending_registrations WHERE email=?').run(email);
-          await db.prepare('DELETE FROM auth_codes WHERE email=?').run(email);
+            ON CONFLICT(email) DO NOTHING RETURNING id`).get(email, now, now);
+          if (!user) {
+            await db.exec('ROLLBACK');
+            return json(res, 409, { error: 'כבר קיים חשבון עם כתובת המייל הזו. אפשר להתחבר.' });
+          }
+          await db.prepare('INSERT INTO user_credentials (user_id,password_hash) VALUES (?,?)')
+            .run(user.id, passwordHash(password));
+          await db.prepare('INSERT INTO user_profiles (user_id,data,updated) VALUES (?,?,?)')
+            .run(user.id, JSON.stringify(profile), now);
           token = await startUserSession(db, user.id, now);
           await db.exec('COMMIT');
-        } catch (error) { await db.exec('ROLLBACK'); throw error; }
+        } catch (error) {
+          await db.exec('ROLLBACK');
+          throw error;
+        }
         res.setHeader('Set-Cookie', userSessionCookie(token, 30 * 86400));
-        return json(res, 200, { ok: true });
+        return json(res, 201, { ok: true });
       }
       if (path === '/api/account/login' && req.method === 'POST') {
         const data = await body(req, 4096);
@@ -320,53 +236,14 @@ const server = http.createServer(async (req, res) => {
         res.setHeader('Set-Cookie', userSessionCookie(token, 30 * 86400));
         return json(res, 200, { ok: true });
       }
-      if (path === '/api/account/request-code' && req.method === 'POST') {
-        const email = normalizeEmail((await body(req, 4096))?.email);
-        const user = await db.prepare(`SELECT users.id FROM users JOIN user_credentials
-          ON user_credentials.user_id=users.id WHERE users.email=?`).get(email);
-        if (user) await issueAuthCode(db, req, email, 'login');
-        return json(res, 200, { ok: true });
-      }
-      if (path === '/api/account/verify' && req.method === 'POST') {
-        const data = await body(req, 4096);
-        const email = normalizeEmail(data?.email);
-        const user = await db.prepare(`SELECT users.id FROM users JOIN user_credentials
-          ON user_credentials.user_id=users.id WHERE users.email=?`).get(email);
-        if (!user || !await verifyAuthCode(db, email, 'login', data?.code)) {
-          return json(res, 401, { error: 'הקוד שגוי או שפג תוקפו. יש לבקש קוד חדש.' });
-        }
-        const now = Date.now();
-        await db.prepare('DELETE FROM auth_codes WHERE email=? AND purpose=?').run(email, 'login');
-        await db.prepare('UPDATE users SET last_login=? WHERE id=?').run(now, user.id);
-        const token = await startUserSession(db, user.id, now);
-        res.setHeader('Set-Cookie', userSessionCookie(token, 30 * 86400));
-        return json(res, 200, { ok: true });
-      }
-      if (path === '/api/account/reset/request' && req.method === 'POST') {
-        const email = normalizeEmail((await body(req, 4096))?.email);
-        const user = await db.prepare(`SELECT users.id FROM users JOIN user_credentials
-          ON user_credentials.user_id=users.id WHERE users.email=?`).get(email);
-        if (user) await issueAuthCode(db, req, email, 'reset');
-        return json(res, 200, { ok: true });
-      }
-      if (path === '/api/account/reset' && req.method === 'POST') {
-        const data = await body(req, 4096);
-        const email = normalizeEmail(data?.email);
-        const password = validateUserPassword(data?.password);
-        const user = await db.prepare(`SELECT users.id FROM users JOIN user_credentials
-          ON user_credentials.user_id=users.id WHERE users.email=?`).get(email);
-        if (!user || !await verifyAuthCode(db, email, 'reset', data?.code)) {
-          return json(res, 401, { error: 'הקוד שגוי או שפג תוקפו. יש לבקש קוד חדש.' });
-        }
-        await db.exec('BEGIN');
-        try {
-          await db.prepare('UPDATE user_credentials SET password_hash=? WHERE user_id=?').run(passwordHash(password), user.id);
-          await db.prepare('DELETE FROM user_sessions WHERE user_id=?').run(user.id);
-          await db.prepare('DELETE FROM auth_codes WHERE email=? AND purpose=?').run(email, 'reset');
-          await db.exec('COMMIT');
-        } catch (error) { await db.exec('ROLLBACK'); throw error; }
-        res.setHeader('Set-Cookie', userSessionCookie('', 0));
-        return json(res, 200, { ok: true });
+      if ([
+        '/api/account/register/verify',
+        '/api/account/request-code',
+        '/api/account/verify',
+        '/api/account/reset/request',
+        '/api/account/reset',
+      ].includes(path)) {
+        return json(res, 404, { error: 'שליחת קודים במייל אינה פעילה באתר' });
       }
       if (path === '/api/account/profile' && req.method === 'PUT') {
         const session = await userSession(db, req);
@@ -458,6 +335,11 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true });
       }
       if (!await isAdmin(db, req)) return json(res, 401, { error: 'יש להתחבר כמנהלת' });
+      if (path === '/api/subscribers' && req.method === 'GET') {
+        const rows = await db.prepare(`SELECT users.email,users.created,user_profiles.data
+          FROM users JOIN user_profiles ON user_profiles.user_id=users.id ORDER BY users.created DESC`).all();
+        return json(res, 200, rows.map(({ data, ...row }) => ({ ...row, profile: JSON.parse(data) })));
+      }
       if (path === '/api/messages' && req.method === 'GET') {
         const items = (await db.prepare('SELECT id,data,created,is_read FROM messages ORDER BY id DESC').all())
           .map(({ data, is_read, ...row }) => ({ ...JSON.parse(data), ...row, read: Boolean(is_read) }));

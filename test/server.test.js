@@ -26,7 +26,7 @@ test('persistent calendar API and administrator flows', async t => {
   async function start() {
     child = spawn(process.execPath, ['server.js'], {
       cwd: root,
-      env: { ...process.env, DATABASE_URL: databaseUrl, RENDER: '', DATA_DIR: directory, ADMIN_PASSWORD: password, PORT: '0', HOST: '127.0.0.1', NODE_ENV: 'test', AUTH_TEST_CODE: '123456' },
+      env: { ...process.env, DATABASE_URL: databaseUrl, RENDER: '', DATA_DIR: directory, ADMIN_PASSWORD: password, PORT: '0', HOST: '127.0.0.1', NODE_ENV: 'test' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '', errors = '';
@@ -131,28 +131,30 @@ test('persistent calendar API and administrator flows', async t => {
     cookie = login.cookie.split(';')[0];
     assert.equal((await request('auth')).data.authenticated, true);
   });
-  await t.test('registers profiles, supports password and code login, resets passwords and synchronizes favorites', async () => {
+  await t.test('registers profiles, categorizes update preferences, supports password login and synchronizes favorites', async () => {
     const email = 'user@example.com';
     const userPassword = 'User-password-123!';
-    const newPassword = 'New-user-password-456!';
     const profile = {
       firstName: 'שרה', lastName: 'כהן', birthDate: '2000-05-12', gender: 'female', city: 'ירושלים',
       updatesCity: true, updatesFavorites: true, updatesSales: false, updatesDaily: false, updatesOutlet: true, adsConsent: false,
     };
     assert.deepEqual((await accountRequest('account')).data, { authenticated: false });
     assert.equal((await accountRequest('user/favorites', 'GET', undefined, false)).status, 401);
-    assert.equal((await accountRequest('account/request-code', 'POST', { email: 'invalid' }, false)).status, 400);
     assert.equal((await accountRequest('account/register', 'POST', { email, password: 'short', profile }, false)).status, 400);
     assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile: { ...profile, city: 'לא קיימת' } }, false)).status, 400);
-    assert.equal((await accountRequest('account/register', 'POST', { email: 'User@Example.com', password: userPassword, profile }, false)).status, 200);
-    assert.equal((await accountRequest('account/register/verify', 'POST', { email, code: '000000' }, false)).status, 401);
-    const registration = await accountRequest('account/register/verify', 'POST', { email, code: '123456' }, false);
-    assert.equal(registration.status, 200);
+    const registration = await accountRequest('account/register', 'POST', { email: 'User@Example.com', password: userPassword, profile }, false);
+    assert.equal(registration.status, 201);
     assert.match(registration.cookie, /user_session=/);
     assert.match(registration.cookie, /HttpOnly/);
     assert.match(registration.cookie, /SameSite=Strict/);
     userCookie = registration.cookie.split(';')[0];
+    assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile }, false)).status, 409);
     assert.deepEqual((await accountRequest('account')).data, { authenticated: true, email, profile });
+    assert.equal((await request('subscribers', 'GET', undefined, false)).status, 401);
+    assert.deepEqual((await request('subscribers')).data.map(item => ({
+      email: item.email,
+      profile: item.profile,
+    })), [{ email, profile }]);
     assert.deepEqual((await accountRequest('user/favorites')).data, { sales: [], stores: [] });
     assert.deepEqual((await accountRequest('user/favorites', 'PUT', { sales: [4, 4], stores: [2] })).data, { sales: [4], stores: [2] });
     assert.deepEqual((await accountRequest('user/favorites/sync', 'POST', { sales: [5], stores: [2, 3] })).data, { sales: [4, 5], stores: [2, 3] });
@@ -160,6 +162,7 @@ test('persistent calendar API and administrator flows', async t => {
     const updatedProfile = { ...profile, city: 'בני ברק', updatesDaily: true, updatesOutlet: false, adsConsent: true };
     assert.deepEqual((await accountRequest('account/profile', 'PUT', updatedProfile)).data, updatedProfile);
     assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
+    assert.deepEqual((await request('subscribers')).data[0].profile, updatedProfile);
     assert.equal((await accountRequest('account/logout', 'POST', {})).status, 200);
     assert.equal((await accountRequest('account')).data.authenticated, false);
     userCookie = '';
@@ -167,21 +170,8 @@ test('persistent calendar API and administrator flows', async t => {
     const passwordLogin = await accountRequest('account/login', 'POST', { email, password: userPassword }, false);
     assert.equal(passwordLogin.status, 200);
     userCookie = passwordLogin.cookie.split(';')[0];
-    assert.equal((await accountRequest('account/logout', 'POST', {})).status, 200);
-    userCookie = '';
-    assert.equal((await accountRequest('account/request-code', 'POST', { email }, false)).status, 200);
-    const codeLogin = await accountRequest('account/verify', 'POST', { email, code: '123456' }, false);
-    assert.equal(codeLogin.status, 200);
-    userCookie = codeLogin.cookie.split(';')[0];
-    assert.equal((await accountRequest('account/logout', 'POST', {})).status, 200);
-    userCookie = '';
-    assert.equal((await accountRequest('account/reset/request', 'POST', { email }, false)).status, 200);
-    assert.equal((await accountRequest('account/reset', 'POST', { email, code: '000000', password: newPassword }, false)).status, 401);
-    assert.equal((await accountRequest('account/reset', 'POST', { email, code: '123456', password: newPassword }, false)).status, 200);
-    assert.equal((await accountRequest('account/login', 'POST', { email, password: userPassword }, false)).status, 401);
-    const finalLogin = await accountRequest('account/login', 'POST', { email, password: newPassword }, false);
-    assert.equal(finalLogin.status, 200);
-    userCookie = finalLogin.cookie.split(';')[0];
+    assert.equal((await accountRequest('account/request-code', 'POST', { email }, false)).status, 404);
+    assert.equal((await accountRequest('account/reset/request', 'POST', { email }, false)).status, 404);
   });
   await t.test('contact messages stay private, support read state and limit public submissions', async () => {
     const data = { name: 'Private message sender', email: 'sender@example.com', phone: '', subject: 'Private subject', message: '<b>Private message</b>\nSecond line', read: true };
