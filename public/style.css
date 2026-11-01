@@ -279,6 +279,7 @@ textarea { resize: vertical; min-height: 104px; }
 
 dialog { border: 1px solid var(--control-border); border-radius: 18px; padding: 0; width: min(900px, calc(100% - 40px)); max-height: 90vh; overflow: hidden; color: var(--ink); background: var(--surface); }
 dialog::backdrop { background: #0009; }
+.account-success-dialog { width: min(520px, calc(100% - 40px)); border-top: 4px solid var(--fuchsia); }
 .account-prompt-dialog { width: min(560px, calc(100% - 40px)); margin: 12px auto auto; border-color: var(--fuchsia); border-top: 4px solid var(--fuchsia); border-radius: 12px; background: #fff0f7; }
 .account-prompt-dialog::backdrop { background: #0005; }
 .account-prompt-dialog .dialog-heading { padding: 20px 24px 14px; margin-bottom: 14px; border-color: #d7197040; }
@@ -368,6 +369,13 @@ dialog::backdrop { background: #0009; }
 .profile-personal-grid { margin-top: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .field { display: block; min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.7; }
+.password-field { position: relative; }
+.password-field label { display: block; }
+.password-field input { padding-inline-end: 52px; }
+.password-toggle { position: absolute; inset-inline-end: 2px; bottom: 2px; display: grid; place-items: center; width: 44px; height: 42px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.password-toggle:hover { color: var(--ink); background: var(--paper); }
+.password-toggle .password-eye-slash { display: none; }
+.password-toggle[aria-pressed=true] .password-eye-slash { display: block; }
 .field:has([data-email-input]) { position: relative; }
 .email-suggestions { position: absolute; top: calc(100% + 4px); inset-inline: 0; z-index: 6; overflow: hidden; border: 1px solid var(--control-border); border-top: 3px solid var(--action); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px #11111120; }
 .email-suggestions[hidden] { display: none; }

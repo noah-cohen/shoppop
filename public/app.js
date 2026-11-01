@@ -161,7 +161,7 @@ async function loadCities() {
   return data.cities;
 }
 function openDialog(title, content, participants = [], titleStore = null, headingAction = '') {
-  dialog.classList.remove('account-prompt-dialog');
+  dialog.classList.remove('account-prompt-dialog', 'account-success-dialog');
   dialogContent.innerHTML = `<div class="dialog-heading"><div class="dialog-title-block"><h2 id="dialog-title">${titleStore ? storeIdentity(titleStore) : esc(title)}</h2>${participants.length ? `<div class="dialog-stores">${participants.map(link => `<span title="${esc(storeById(link.storeId).name)}">${storeIdentity(storeById(link.storeId))}</span>`).join('')}</div>` : ''}</div><div class="dialog-heading-actions">${headingAction}<button class="close" data-action="close" aria-label="סגירה"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg></button></div></div><div class="dialog-body">${content}</div>`;
   if (!dialog.open) dialog.showModal();
   dialogContent.querySelector('.dialog-body').scrollTop = 0;
@@ -172,6 +172,10 @@ function hasUnsavedSale() {
 function requestDialogClose() {
   if (hasUnsavedSale() && !confirm('התחלת למלא פרטי מכירה. האם את בטוחה שברצונך לסגור בלי לשמור?')) return;
   dialog.close();
+}
+function accountSuccess(title, message) {
+  openDialog(title, `<p>${esc(message)}</p><div class="form-actions"><button class="primary" type="button" data-action="close">המשך לאזור האישי</button></div>`);
+  dialog.classList.add('account-success-dialog');
 }
 function showAccountPrompt() {
   if (state.account.authenticated || state.accountDemo || state.view === 'account' || accountPromptShown) return;
@@ -500,6 +504,7 @@ function demoAccountPage() {
     updatesCity: true, updatesFavorites: true, updatesSales: true, updatesDaily: false, updatesOutlet: true, adsConsent: false,
   };
   main.innerHTML = `${accountTabs('profile', true)}<div class="page-heading account-page-heading"><div class="eyebrow">תצוגת ניסיון בלבד</div><h1>האזור האישי של שרה כהן.</h1><p>כאן אפשר לעדכן את הפרטים האישיים ואת העדפות העדכונים.</p></div><form id="account-demo-profile-form" class="submission-form account-profile-form demo-account">${profileFields(profile, 'demo@example.com')}<div class="admin-notice">זהו חשבון לדוגמה. אפשר לערוך את השדות כדי להתרשם, אך השינויים לא יישמרו ולא יישלח מידע.</div><div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">שמירת שינויים בתצוגת הניסיון</button></div></form>`;
+  initializeAccountForm(main.querySelector('form'));
 }
 function profileFields(profile = {}, email = '') {
   return `<div class="profile-sections">
@@ -511,7 +516,8 @@ function profileFields(profile = {}, email = '') {
       ${cityField('עיר', 'city', profile.city || '')}
       ${email ? field('כתובת דוא״ל — לא ניתנת לשינוי', 'accountEmail', email, 'email', false, 'disabled dir="ltr"') : ''}
     </div></fieldset>
-    <fieldset class="form-section profile-section"><legend>עדכונים שארצה לקבל</legend>
+    <fieldset class="form-section profile-section" data-update-preferences><legend>עדכונים שארצה לקבל</legend>
+      <label class="choice-option"><input type="checkbox" data-select-all-updates><span>בחרי הכול</span></label>
       <label class="choice-option"><input type="checkbox" name="updatesCity"${profile.updatesCity ? ' checked' : ''}><span>עדכונים על מכירות בעיר שלי</span></label>
       <label class="choice-option"><input type="checkbox" name="updatesFavorites"${profile.updatesFavorites ? ' checked' : ''}><span>עדכונים מהחנויות שסימנתי כמועדפות</span></label>
       <label class="choice-option"><input type="checkbox" name="updatesSales"${profile.updatesSales ? ' checked' : ''}><span>עדכונים על מכירות שסימנתי כמועדפות</span></label>
@@ -541,6 +547,26 @@ function profileFromForm(form) {
     adsConsent: values.has('adsConsent'),
   };
 }
+const accountFormBaselines = new WeakMap();
+const accountFormValues = form => JSON.stringify([...new FormData(form)]);
+function accountFormChanged(form) {
+  return accountFormBaselines.has(form) && accountFormValues(form) !== accountFormBaselines.get(form);
+}
+function syncUpdateSelection(form) {
+  const preferences = form.querySelector('[data-update-preferences]');
+  const choices = [...preferences.querySelectorAll('input[name]')];
+  const selected = choices.filter(input => input.checked).length;
+  const selectAll = preferences.querySelector('[data-select-all-updates]');
+  selectAll.checked = selected === choices.length;
+  selectAll.indeterminate = selected > 0 && selected < choices.length;
+}
+function initializeAccountForm(form) {
+  syncUpdateSelection(form);
+  if (form.matches('.account-profile-form')) {
+    accountFormBaselines.set(form, accountFormValues(form));
+    updateSubmit(form);
+  }
+}
 function accountPage() {
   if (state.accountDemo) {
     demoAccountPage();
@@ -553,10 +579,12 @@ function accountPage() {
       return;
     }
     main.innerHTML = `${accountTabs('profile')}<div class="page-heading account-page-heading"><div class="eyebrow">האזור האישי שלך</div><h1>האזור האישי של ${esc([profile.firstName, profile.lastName].filter(Boolean).join(' '))}.</h1><p>אפשר לערוך כאן את הפרטים האישיים ואת סוגי העדכונים שתרצי לקבל.</p></div><form id="account-profile-form" class="submission-form account-profile-form">${profileFields(profile, state.account.email)}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="user-logout">יציאה מהחשבון</button><button class="primary" type="submit">שמירת השינויים</button></div></form>`;
+    initializeAccountForm(main.querySelector('form'));
     return;
   }
   if (state.accountMode === 'register') {
     main.innerHTML = `<div class="page-heading"><div class="eyebrow">יצירת חשבון חדש</div><h1>הרשמה.</h1><p class="hint">המייל משמש לזיהוי החשבון ולשמירת העדפות בלבד. האתר אינו שולח הודעות מייל.</p></div><form id="account-register-form" class="submission-form"><div class="form-grid"><div class="full">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}</div>${field('סיסמה — לפחות 10 תווים', 'password', '', 'password', true, 'minlength="10" autocomplete="new-password"')}${field('אימות סיסמה', 'confirmPassword', '', 'password', true, 'minlength="10" autocomplete="new-password"')}</div>${profileFields()}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="secondary" type="button" data-action="account-login">כבר יש לי חשבון</button><button class="primary" type="submit">יצירת חשבון</button></div></form>`;
+    initializeAccountForm(main.querySelector('form'));
     return;
   }
   main.innerHTML = `<div class="login account-card"><div class="eyebrow">טוב לראות אותך</div><h1>התחברות.</h1><form id="account-login-form">${field('כתובת דוא״ל', 'email', '', 'email', true, 'maxlength="254" autocomplete="email" dir="ltr"')}${field('סיסמה', 'password', '', 'password', true, 'autocomplete="current-password"')}<div class="error" id="form-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">התחברות</button></div></form><div class="account-options"><button class="primary" type="button" data-action="account-demo">כניסה לתצוגת ניסיון</button><button class="text-button" type="button" data-action="account-register">הרשמה לחשבון חדש</button></div><p class="hint">המייל משמש לזיהוי החשבון בלבד. האתר אינו שולח הודעות מייל או קודי כניסה.</p></div>`;
@@ -620,7 +648,7 @@ function adminResults() {
 }
 function adminPage() {
   if (!state.authenticated) {
-    main.innerHTML = `<div class="login"><div class="eyebrow">אזור ניהול</div><h1>כניסת מנהלת.</h1><p class="hint">הזיני את סיסמת הניהול שנקבעה בעת הפעלת השרת.</p><form id="login-form"><label class="field">סיסמה<input type="password" name="password" required autocomplete="current-password"></label><div class="error" id="login-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">כניסה לניהול</button></div></form></div>`;
+    main.innerHTML = `<div class="login"><div class="eyebrow">אזור ניהול</div><h1>כניסת מנהלת.</h1><p class="hint">הזיני את סיסמת הניהול שנקבעה בעת הפעלת השרת.</p><form id="login-form">${field('סיסמה', 'password', '', 'password', true, 'autocomplete="current-password"')}<div class="error" id="login-error" role="alert"></div><div class="form-actions"><button class="primary" type="submit">כניסה לניהול</button></div></form></div>`;
     return;
   }
   main.innerHTML = `<div class="page-heading split-title"><div><div class="eyebrow">מאחורי הקלעים</div><h1>האתר בידיים שלך.</h1></div><div class="actions"><button class="secondary" data-action="password">החלפת סיסמה</button><button class="secondary" data-action="logout">יציאה</button></div></div>
@@ -667,6 +695,9 @@ function reviewSubmission(id) {
     ${pending ? `<section class="form-section"><h3>העברת הפרטים ליצירת מכירה</h3><p class="hint">כל פרטי המכירה שנשלחו יועברו אוטומטית לטופס יצירת המכירה. קשרי את החנויות והאולם לרשומות הקיימות כדי למנוע כפילויות. אם חסרה רשומה, אפשר ליצור אותה מהפרטים שנשלחו ולחזור לכאן.</p>${item.storeNames.map((name, index) => `<div class="review-link-row"><label class="field">${esc(name)}<select data-review-store="${index}">${options(state.data.stores.map(store => [store.id, store.name]), String(links.stores[index] || ''), 'בחירת חנות קיימת')}</select></label><button class="secondary" data-action="submission-create-store" data-id="${id}" data-index="${index}">יצירת חנות חדשה</button></div>`).join('')}<div class="review-link-row"><label class="field">אולם ${esc(item.venueName)}<select data-review-venue>${options(state.data.venues.map(venue => [venue.id, `${venue.name} — ${venue.city}, ${venue.address}`]), String(links.venueId || ''), 'בחירת אולם קיים')}</select></label><button class="secondary" data-action="submission-create-venue" data-id="${id}">יצירת אולם חדש</button></div></section><div class="error" id="review-error" role="alert"></div><div class="form-actions"><button class="primary" data-action="submission-draft" data-id="${id}">העברת כל הפרטים לטופס יצירת מכירה</button><button class="danger" data-action="reject-submission" data-id="${id}">דחיית הבקשה</button></div>` : item.sale_id && state.data.sales.some(sale => sale.id === item.sale_id) ? `<button class="secondary" data-action="sale" data-id="${item.sale_id}">צפייה במכירה שפורסמה</button>` : ''}</section>`);
 }
 const field = (label, name, value = '', type = 'text', required = false, extra = '') => {
+  if (type === 'password') {
+    return `<div class="field password-field"><label>${esc(label)}${required ? ' *' : ''}<input type="password" name="${name}" value="${esc(value)}"${required ? ' required' : ''} ${extra}></label><button class="password-toggle" type="button" data-action="toggle-password" aria-label="הצגת ${esc(label)}" aria-pressed="false" title="הצגת סיסמה"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye-slash" d="m3 3 18 18"/></svg></button></div>`;
+  }
   const isDate = type === 'date';
   const isTime = type === 'time';
   const isEmail = type === 'email';
@@ -1144,8 +1175,24 @@ function pendingFor(form) {
 }
 function updateSubmit(form) {
   form.querySelector('[type=submit]').disabled = pendingFor(form).size > 0 || form.dataset.saving === 'true' || form.dataset.loadingStreets === 'true' || Boolean(form.querySelector('[data-loading-streets="true"]'))
-    || (form.dataset.type === 'sales' && !form.elements.saleKind.value);
+    || (form.dataset.type === 'sales' && !form.elements.saleKind.value)
+    || (form.matches('.account-profile-form') && !accountFormChanged(form));
 }
+document.addEventListener('input', event => {
+  const form = event.target.closest('.account-profile-form');
+  if (form) updateSubmit(form);
+});
+document.addEventListener('change', event => {
+  const form = event.target.closest('form');
+  if (!form) return;
+  if (event.target.closest('[data-update-preferences]')) {
+    if (event.target.matches('[data-select-all-updates]')) {
+      form.querySelectorAll('[data-update-preferences] input[name]').forEach(input => { input.checked = event.target.checked; });
+    }
+    syncUpdateSelection(form);
+  }
+  if (form.matches('.account-profile-form')) updateSubmit(form);
+});
 function cancelImage(input) {
   input.dataset.imageRequest = String(Number(input.dataset.imageRequest || 0) + 1);
   input.value = '';
@@ -1269,6 +1316,14 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, id, type, scope } = button.dataset;
+  if (action === 'toggle-password') {
+    const input = button.closest('.password-field').querySelector('input');
+    const visible = input.type === 'password';
+    input.type = visible ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(visible));
+    button.title = visible ? 'הסתרת סיסמה' : 'הצגת סיסמה';
+    return;
+  }
   if (action === 'email-suggestion') {
     const input = button.closest('.field').querySelector('[data-email-input]');
     input.value = button.dataset.value;
@@ -1548,6 +1603,10 @@ document.addEventListener('submit', async event => {
   ].includes(form.id)) return;
   event.preventDefault();
   if (form.dataset.saving === 'true') return;
+  if (form.matches('.account-profile-form') && !accountFormChanged(form)) {
+    toast('אין שינויים לשמירה');
+    return;
+  }
   const error = form.querySelector('#form-error, #login-error');
   const submit = form.querySelector('[type=submit]');
   if (form.dataset.type === 'sales') {
@@ -1569,7 +1628,7 @@ document.addEventListener('submit', async event => {
       await load();
       state.accountMode = 'login';
       accountPage();
-      toast('התחברת בהצלחה');
+      accountSuccess('התחברת בהצלחה', 'ברוכה הבאה! אפשר כעת לעדכן את הפרטים שלך ולצפות במועדפים.');
     } else if (form.id === 'account-register-form') {
       const values = new FormData(form);
       if (values.get('password') !== values.get('confirmPassword')) throw new Error('הסיסמאות אינן תואמות');
@@ -1578,7 +1637,7 @@ document.addEventListener('submit', async event => {
       await load();
       state.accountMode = 'login';
       accountPage();
-      toast('החשבון נוצר והעדפות העדכונים נשמרו');
+      accountSuccess('נרשמת בהצלחה', 'החשבון נוצר והעדפות העדכונים שלך נשמרו.');
     } else if (form.id === 'account-demo-profile-form') {
       toast('בתצוגת הניסיון השינויים אינם נשמרים');
     } else if (form.id === 'account-profile-form') {
