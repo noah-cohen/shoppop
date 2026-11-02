@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { readAll, mediaIsPublished, pruneUnusedMedia, saveSale } from './database.js';
 import { openStorage } from './storage.js';
-import { InputError, validateStoredEntity, validateSubmission, validateContactMessage, parseImage } from './validation.js';
+import { InputError, validateStoredEntity, validateSubmission, validateContactMessage, validatePhone, parseImage } from './validation.js';
 import { previewSaleMerge, mergeSales, MergeConflictError } from './sales-overlap.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -97,7 +97,7 @@ const profileValue = value => {
     return value[field];
   };
   return {
-    firstName, lastName, birthDate, gender: value.gender, city,
+    firstName, lastName, birthDate, gender: value.gender, city, phone: validatePhone(value.phone),
     updatesCity: boolean('updatesCity'),
     updatesFavorites: boolean('updatesFavorites'),
     updatesSales: boolean('updatesSales'),

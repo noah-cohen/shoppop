@@ -142,6 +142,9 @@ test('persistent calendar API and administrator flows', async t => {
     assert.equal((await accountRequest('user/favorites', 'GET', undefined, false)).status, 401);
     assert.equal((await accountRequest('account/register', 'POST', { email, password: 'short', profile }, false)).status, 400);
     assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile: { ...profile, city: 'לא קיימת' } }, false)).status, 400);
+    for (const phone of ['123456', 'abcdefg', true, '1'.repeat(81), '123-456']) {
+      assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile: { ...profile, phone } }, false)).status, 400);
+    }
     const registration = await accountRequest('account/register', 'POST', { email: 'User@Example.com', password: userPassword, profile }, false);
     assert.equal(registration.status, 201);
     assert.match(registration.cookie, /user_session=/);
@@ -149,20 +152,28 @@ test('persistent calendar API and administrator flows', async t => {
     assert.match(registration.cookie, /SameSite=Strict/);
     userCookie = registration.cookie.split(';')[0];
     assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile }, false)).status, 409);
-    assert.deepEqual((await accountRequest('account')).data, { authenticated: true, email, profile });
+    const storedProfile = { ...profile, phone: '' };
+    assert.deepEqual((await accountRequest('account')).data, { authenticated: true, email, profile: storedProfile });
     assert.equal((await request('subscribers', 'GET', undefined, false)).status, 401);
     assert.deepEqual((await request('subscribers')).data.map(item => ({
       email: item.email,
       profile: item.profile,
-    })), [{ email, profile }]);
+    })), [{ email, profile: storedProfile }]);
     assert.deepEqual((await accountRequest('user/favorites')).data, { sales: [], stores: [] });
     assert.deepEqual((await accountRequest('user/favorites', 'PUT', { sales: [4, 4], stores: [2] })).data, { sales: [4], stores: [2] });
     assert.deepEqual((await accountRequest('user/favorites/sync', 'POST', { sales: [5], stores: [2, 3] })).data, { sales: [4, 5], stores: [2, 3] });
     assert.equal((await accountRequest('user/favorites', 'PUT', { sales: [0], stores: [] })).status, 400);
-    const updatedProfile = { ...profile, city: 'בני ברק', updatesDaily: true, updatesOutlet: false, adsConsent: true };
-    assert.deepEqual((await accountRequest('account/profile', 'PUT', updatedProfile)).data, updatedProfile);
+    const updatedProfile = { ...profile, phone: '+972 (50) 555-0123', city: 'בני ברק', updatesDaily: true, updatesOutlet: false, adsConsent: true };
+    assert.deepEqual((await accountRequest('account/profile', 'PUT', { ...updatedProfile, phone: ` ${updatedProfile.phone} ` })).data, updatedProfile);
     assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
     assert.deepEqual((await request('subscribers')).data[0].profile, updatedProfile);
+    assert.ok(!JSON.stringify((await request('data', 'GET', undefined, false)).data).includes(updatedProfile.phone));
+    assert.equal((await accountRequest('account/profile', 'PUT', { ...updatedProfile, phone: 'invalid' })).status, 400);
+    assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
+    const clearedPhone = { ...updatedProfile, phone: '' };
+    assert.deepEqual((await accountRequest('account/profile', 'PUT', clearedPhone)).data, clearedPhone);
+    assert.deepEqual((await accountRequest('account')).data.profile, clearedPhone);
+    assert.deepEqual((await accountRequest('account/profile', 'PUT', updatedProfile)).data, updatedProfile);
     assert.equal((await accountRequest('account/logout', 'POST', {})).status, 200);
     assert.equal((await accountRequest('account')).data.authenticated, false);
     userCookie = '';
@@ -170,6 +181,7 @@ test('persistent calendar API and administrator flows', async t => {
     const passwordLogin = await accountRequest('account/login', 'POST', { email, password: userPassword }, false);
     assert.equal(passwordLogin.status, 200);
     userCookie = passwordLogin.cookie.split(';')[0];
+    assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
     assert.equal((await accountRequest('account/request-code', 'POST', { email }, false)).status, 404);
     assert.equal((await accountRequest('account/reset/request', 'POST', { email }, false)).status, 404);
   });

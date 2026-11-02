@@ -168,13 +168,19 @@ export function validateEntity(type, data, db) {
   return result;
 }
 
+export function validatePhone(value) {
+  const phone = text(value, 'טלפון', false, 80);
+  if (phone && (!/^[+\d\s()-]{7,80}$/.test(phone) || phone.replace(/\D/g, '').length < 7)) fail('יש להזין מספר טלפון תקין');
+  return phone;
+}
+
 export function validateContactMessage(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) fail('נתוני הודעה לא תקינים');
   const email = text(data.email, 'דוא״ל', false, 254);
   const phone = text(data.phone, 'טלפון', false, 80);
   if (!email && !phone) fail('יש להזין כתובת דוא״ל או מספר טלפון כדי שנוכל לחזור אליכם');
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('יש להזין כתובת דוא״ל תקינה');
-  if (phone && (!/^[+\d\s()-]{7,80}$/.test(phone) || phone.replace(/\D/g, '').length < 7)) fail('יש להזין מספר טלפון תקין');
+  validatePhone(phone);
   return {
     name: text(data.name, 'שם מלא', true, 150), email, phone,
     subject: text(data.subject, 'נושא הפנייה', true, 180),
