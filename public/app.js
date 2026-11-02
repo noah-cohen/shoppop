@@ -277,15 +277,15 @@ async function loadVenueStreets(scope, selected = '') {
 const posterPreview = (posterId, image = '') => image || posterId ? `<img class="poster-preview" src="${esc(image || `/api/media/${posterId}`)}" alt="תצוגה מקדימה של מודעת הפרסומת">` : '<p class="hint">לא צורפה מודעה</p>';
 function filterDropdown(label, key, values, selected, placeholder) {
   const caption = values.find(([value]) => String(value) === selected)?.[1] || placeholder;
-  return `<div class="filter-field"><span>${esc(label)}</span><details class="multi-picker filter-dropdown"><summary><span data-filter-caption>${esc(caption)}</span></summary><div class="filter-menu">${optionSearch(label)}<select data-filter="${key}" size="8" aria-label="סינון לפי ${esc(label)}">${options(values, selected, placeholder)}</select><p class="picker-results" data-option-results role="status"></p></div></details></div>`;
+  return `<div class="filter-field${selected ? ' filter-active' : ''}"><span>${esc(label)}</span><details class="multi-picker filter-dropdown"><summary><span data-filter-caption>${esc(caption)}</span></summary><div class="filter-menu">${optionSearch(label)}<select data-filter="${key}" size="8" aria-label="סינון לפי ${esc(label)}">${options(values, selected, placeholder)}</select><p class="picker-results" data-option-results role="status"></p></div></details></div>`;
 }
 function filterToolbar(filters, scope = 'main') {
   const cities = availableCities(filters.city);
   const byStore = state.view === 'calendar' || scope === 'day';
   const cats = [...new Set([...CATEGORY_OPTIONS, ...state.data.stores.flatMap(s => s.categories), ...state.data.sales.flatMap(s => s.categories)])].sort((a, b) => a.localeCompare(b, 'he'));
   return `<div class="toolbar ${scope === 'day' ? 'dialog-toolbar' : ''}${byStore ? ' store-toolbar' : ''}" data-filter-scope="${scope}">
-    <label class="filter-field input-wrap"><span>חיפוש חופשי</span><input type="search" data-filter="query" aria-label="חיפוש חופשי" placeholder="שם חנות, מכירה או כתובת" value="${esc(filters.query)}"></label>
-    <div class="filter-field"><span>עיר</span><details class="multi-picker city-picker filter-dropdown"><summary><span data-filter-caption>${esc(filters.city || 'כל הערים')}</span></summary><div class="filter-menu"><input type="search" data-city-search aria-label="חיפוש עיר ברשימה" placeholder="הקלידו שם עיר או יישוב" autocomplete="off"><select data-city-select data-filter="city" size="8" aria-label="סינון לפי עיר">${options(cities.map(c => [c, c]), filters.city, 'כל הערים')}</select><p class="city-results" data-city-results role="status">${cities.length} ערים ויישובים לפי א׳–ב׳</p></div></details></div>
+    <label class="filter-field input-wrap${filters.query.trim() ? ' filter-active' : ''}"><span>חיפוש חופשי</span><input type="search" data-filter="query" aria-label="חיפוש חופשי" placeholder="שם חנות, מכירה או כתובת" value="${esc(filters.query)}"></label>
+    <div class="filter-field${filters.city ? ' filter-active' : ''}"><span>עיר</span><details class="multi-picker city-picker filter-dropdown"><summary><span data-filter-caption>${esc(filters.city || 'כל הערים')}</span></summary><div class="filter-menu"><input type="search" data-city-search aria-label="חיפוש עיר ברשימה" placeholder="הקלידו שם עיר או יישוב" autocomplete="off"><select data-city-select data-filter="city" size="8" aria-label="סינון לפי עיר">${options(cities.map(c => [c, c]), filters.city, 'כל הערים')}</select><p class="city-results" data-city-results role="status">${cities.length} ערים ויישובים לפי א׳–ב׳</p></div></details></div>
     ${filterDropdown('קטגוריה', 'category', cats.map(c => [c, c]), filters.category, 'כל הקטגוריות')}
     ${filterDropdown('אולם', 'venue', state.data.venues.map(v => [v.id, v.name]), filters.venue, 'כל האולמות')}
     ${byStore ? filterDropdown('חנות', 'store', [...state.data.stores].sort((a, b) => a.name.localeCompare(b.name, 'he')).map(store => [store.id, store.name]), filters.store, 'כל החנויות') : ''}
@@ -1118,6 +1118,7 @@ document.addEventListener('input', event => {
   }
   const key = event.target.dataset.filter;
   if (!key) return;
+  event.target.closest('.filter-field').classList.toggle('filter-active', Boolean(event.target.value.trim()));
   const scope = event.target.closest('[data-filter-scope]').dataset.filterScope;
   if (scope === 'admin') {
     state.adminSaleFilters[key] = event.target.value;
