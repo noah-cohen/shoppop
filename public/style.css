@@ -105,10 +105,9 @@ textarea { resize: vertical; min-height: 104px; }
 .toolbar select:not([size]), .filter-dropdown > summary { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23202020' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 16px center; background-size: 12px 8px; padding-inline-end: 42px; }
 .toolbar select:not([size]) { height: 46px; }
 .filter-dropdown { height: 46px; }
-.filter-dropdown > summary { list-style: none; height: 100%; min-height: 0; padding-block: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.multi-picker.filter-dropdown > summary { list-style: none; height: 100%; min-height: 0; padding-block: 11px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .filter-dropdown > summary::-webkit-details-marker { display: none; }
-.filter-active > input[data-filter], .filter-active > .filter-dropdown > summary { background-color: #fff0f8; border-color: #c94b8d; color: #842052; }
-.filter-active > span { color: #842052; font-weight: 600; }
+.filter-active > input[data-filter], .filter-active > .filter-dropdown { background-color: #fff0f8; border-color: #c94b8d; color: #842052; }
 .clear { border: 1px solid var(--control-border); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 13px; line-height: 1.5; min-height: 46px; padding: 12px 16px; white-space: nowrap; }
 .clear:hover { background: var(--paper); border-color: var(--muted); }
 .section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin: 36px 0 22px; }
