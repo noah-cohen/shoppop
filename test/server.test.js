@@ -70,6 +70,17 @@ test('persistent calendar API and administrator flows', async t => {
     assert.equal(page.status, 200);
     const pageHTML = await page.text();
     assert.match(pageHTML, /lang="he" dir="rtl"/);
+    assert.match(pageHTML, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg">/);
+    const favicon = await fetch(`${base}/favicon.svg`);
+    assert.equal(favicon.status, 200);
+    assert.equal(favicon.headers.get('content-type'), 'image/svg+xml');
+    const faviconSvg = await favicon.text();
+    assert.match(faviconSvg, /<svg[^>]+viewBox="0 0 64 64"/);
+    assert.match(faviconSvg, /<title>ShopPop SH<\/title>/);
+    const faviconHead = await fetch(`${base}/favicon.svg`, { method: 'HEAD' });
+    assert.equal(faviconHead.status, 200);
+    assert.equal(faviconHead.headers.get('content-type'), 'image/svg+xml');
+    assert.equal(await faviconHead.text(), '');
     assert.doesNotMatch(pageHTML, /data-tab="favorites"/);
     assert.match(pageHTML, /class="account-link" href="#account" data-tab="account"/);
     assert.match(pageHTML, /data-account-label>האזור האישי/);

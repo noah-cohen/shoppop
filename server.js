@@ -456,12 +456,12 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 405, { error: 'פעולה לא נתמכת' });
     }
-    const files = { '/': 'index.html', '/app.js': 'app.js', '/admin-sales.js': 'admin-sales.js', '/style.css': 'style.css', '/options.js': 'options.js', '/dates.js': 'dates.js', '/cities.js': 'cities.js', '/sale-status.js': 'sale-status.js', '/favorites.js': 'favorites.js', '/store-hours.js': 'store-hours.js', '/cities.json': 'cities.json', '/Rubik.ttf': 'Rubik.ttf', '/Rubik-LICENSE.txt': 'Rubik-LICENSE.txt', '/Heebo.ttf': 'Heebo.ttf', '/Heebo-LICENSE.txt': 'Heebo-LICENSE.txt' };
+    const files = { '/': 'index.html', '/favicon.svg': 'favicon.svg', '/app.js': 'app.js', '/admin-sales.js': 'admin-sales.js', '/style.css': 'style.css', '/options.js': 'options.js', '/dates.js': 'dates.js', '/cities.js': 'cities.js', '/sale-status.js': 'sale-status.js', '/favorites.js': 'favorites.js', '/store-hours.js': 'store-hours.js', '/cities.json': 'cities.json', '/Rubik.ttf': 'Rubik.ttf', '/Rubik-LICENSE.txt': 'Rubik-LICENSE.txt', '/Heebo.ttf': 'Heebo.ttf', '/Heebo-LICENSE.txt': 'Heebo-LICENSE.txt' };
     if (!files[path] || !['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(404); return res.end('Not found');
     }
     const content = await readFile(join(root, 'public', files[path]));
-    const contentType = path.endsWith('.json') ? 'application/json; charset=utf-8' : path.endsWith('.ttf') ? 'font/ttf' : path.endsWith('.txt') ? 'text/plain; charset=utf-8' : path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8';
+    const contentType = path.endsWith('.svg') ? 'image/svg+xml' : path.endsWith('.json') ? 'application/json; charset=utf-8' : path.endsWith('.ttf') ? 'font/ttf' : path.endsWith('.txt') ? 'text/plain; charset=utf-8' : path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8';
     res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
     res.end(req.method === 'HEAD' ? undefined : content);
   } catch (error) {
