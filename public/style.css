@@ -139,6 +139,7 @@ textarea { resize: vertical; min-height: 104px; }
 .card-body h3 { font-size: 26px; line-height: 1.4; margin: 0; letter-spacing: -.3px; }
 .sale-subtitle { color: var(--muted); font-size: 12px; line-height: 1.8; margin: 12px 0 24px; }
 .card-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.8; margin: -10px 0 20px; }
+.sale-identity + .card-description { margin-top: 12px; }
 .sale-identity, .store-identity { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .sale-identity { flex-wrap: wrap; }
 .sale-card .sale-identity + .info-row { margin-top: 20px; }
