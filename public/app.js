@@ -3,6 +3,7 @@ import { WEEKDAY_LABELS, dateDetails, dateLabel, parseDisplayDate, saleDateRange
 import { cityChoices } from './cities.js';
 import { SALE_STATUSES, saleStatus, saleIsActive, duplicateSale } from './sale-status.js';
 import { FAVORITES_KEY, readFavorites, toggleFavorite, writeFavorites } from './favorites.js';
+import { emptyCalendarFilters, readCalendarFilters, writeCalendarFilters } from './calendar-filters.js';
 import { STORE_WEEKDAYS, emptyWeek, copySundayHours, weeklyHoursError } from './store-hours.js';
 import { filterAdminSales } from './admin-sales.js';
 import { SUBSCRIBER_PREFERENCES, SUBSCRIBER_GENDERS, SUBSCRIBER_AGES, renderSubscribers } from './admin-subscribers.js';
@@ -13,8 +14,8 @@ const dialogContent = document.querySelector('#dialog-content');
 const state = {
   data: { stores: [], venues: [], sales: [] }, authenticated: false,
   view: 'today', adminType: 'sales', month: null, calendarMode: 'stores',
-  filters: { query: '', city: '', category: '', venue: '', store: '', outlet: '' },
-  dayFilters: { query: '', city: '', category: '', venue: '', store: '', outlet: '' },
+  filters: emptyCalendarFilters(),
+  dayFilters: emptyCalendarFilters(),
   cities: [], excludedCities: [],
   submissions: [], messages: [], subscribers: [],
   adminSaleFilters: { period: '', store: '', city: '', venue: '' },
@@ -112,6 +113,22 @@ function loadFavorites() {
     console.error('Could not read favorites', error);
     state.favoritesError = favoritesFailure;
     toast(favoritesFailure);
+  }
+}
+function loadCalendarFilters() {
+  try {
+    state.filters = readCalendarFilters(window.localStorage);
+  } catch (error) {
+    console.error('Could not read calendar filters', error);
+    toast('לא ניתן לקרוא את הסינון השמור. בדקו שאחסון מקומי מותר בדפדפן. הסינון השמור לא הוחלף.');
+  }
+}
+function saveCalendarFilters() {
+  try {
+    writeCalendarFilters(window.localStorage, state.filters);
+  } catch (error) {
+    console.error('Could not save calendar filters', error);
+    toast('הסינון חל כעת, אך לא ניתן לשמור אותו לביקור הבא. בדקו שאחסון מקומי מותר בדפדפן.');
   }
 }
 async function api(path, method = 'GET', data) {
@@ -1021,11 +1038,6 @@ function render() {
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   if (state.view === 'calendar') {
-    const accountCity = state.account.authenticated ? state.account.profile?.city : '';
-    if (accountCity) {
-      state.filters.city = accountCity;
-      if (venueById(Number(state.filters.venue))?.city !== accountCity) state.filters.venue = '';
-    }
     state.month = currentMonth();
     calendarPage();
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -1137,6 +1149,7 @@ document.addEventListener('input', event => {
   }
   const filters = scope === 'day' ? state.dayFilters : state.filters;
   filters[key] = event.target.value;
+  if (scope !== 'day') saveCalendarFilters();
   const picker = event.target.closest('.filter-dropdown');
   if (picker) picker.querySelector('[data-filter-caption]').textContent = event.target.selectedOptions[0].textContent;
   if (scope === 'day') updateDay(); else updateResults();
@@ -1430,6 +1443,7 @@ document.addEventListener('click', async event => {
     }
     const filters = scope === 'day' ? state.dayFilters : state.filters;
     Object.keys(filters).forEach(key => { filters[key] = ''; });
+    if (scope !== 'day') saveCalendarFilters();
     if (scope === 'day') {
       openDialog(dateLabel(state.selectedDay), `${filterToolbar(state.dayFilters, 'day')}<div id="day-results"></div>`);
       updateDay();
@@ -1578,13 +1592,8 @@ document.addEventListener('click', async event => {
     }
     if (action === 'logout') { await api('logout', 'POST', {}); state.authenticated = false; state.messages = []; state.submissions = []; state.subscribers = []; state.subscriberEmailLists = []; adminPage(); }
     if (action === 'user-logout') {
-      const accountCity = state.account.profile?.city;
       await api('account/logout', 'POST', {});
       state.account = { authenticated: false };
-      if (accountCity && state.filters.city === accountCity) {
-        state.filters.city = '';
-        state.filters.venue = '';
-      }
       state.accountMode = 'login';
       updateAccountLink();
       accountPage();
@@ -1749,6 +1758,7 @@ setInterval(() => {
 }, 30_000);
 main.innerHTML = '<div class="loading" role="status">טוענים דברים טובים…</div>';
 loadFavorites();
+loadCalendarFilters();
 try {
   await load();
   render();

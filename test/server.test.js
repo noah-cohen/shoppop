@@ -120,6 +120,10 @@ test('persistent calendar API and administrator flows', async t => {
     assert.equal(cities.headers.get('content-type'), 'application/json; charset=utf-8');
     assert.ok((await cities.json()).cities.length > 1000);
     assert.equal((await fetch(`${base}/options.js`)).status, 200);
+    const calendarFilters = await fetch(`${base}/calendar-filters.js`);
+    assert.equal(calendarFilters.status, 200);
+    assert.match(calendarFilters.headers.get('content-type'), /javascript/);
+    assert.match(await calendarFilters.text(), /export function readCalendarFilters/);
     const subscribersModule = await fetch(`${base}/admin-subscribers.js`);
     assert.equal(subscribersModule.status, 200);
     assert.match(subscribersModule.headers.get('content-type'), /javascript/);

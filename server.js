@@ -459,6 +459,7 @@ const server = http.createServer(async (req, res) => {
     }
     const files = { '/': 'index.html', '/favicon.svg': 'favicon.svg', '/app.js': 'app.js', '/admin-sales.js': 'admin-sales.js', '/style.css': 'style.css', '/options.js': 'options.js', '/dates.js': 'dates.js', '/cities.js': 'cities.js', '/sale-status.js': 'sale-status.js', '/favorites.js': 'favorites.js', '/store-hours.js': 'store-hours.js', '/cities.json': 'cities.json', '/Rubik.ttf': 'Rubik.ttf', '/Rubik-LICENSE.txt': 'Rubik-LICENSE.txt', '/Heebo.ttf': 'Heebo.ttf', '/Heebo-LICENSE.txt': 'Heebo-LICENSE.txt' };
     files['/admin-subscribers.js'] = 'admin-subscribers.js';
+    files['/calendar-filters.js'] = 'calendar-filters.js';
     if (!files[path] || !['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(404); return res.end('Not found');
     }
