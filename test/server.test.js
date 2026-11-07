@@ -88,6 +88,7 @@ test('persistent calendar API and administrator flows', async t => {
     assert.doesNotMatch(pageHTML, /כניסת מנהלת/);
     assert.match(pageHTML, /href="#contact"/);
     assert.match(pageHTML, /href="#contact" data-tab="contact"/);
+    assert.match(pageHTML, /href="mailto:shoppop\.info@gmail\.com" dir="ltr">shoppop\.info@gmail\.com<\/a>/);
     const adminFilters = await fetch(`${base}/admin-sales.js`);
     assert.equal(adminFilters.status, 200);
     assert.match(await adminFilters.text(), /export function filterAdminSales/);
