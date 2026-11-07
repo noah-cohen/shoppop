@@ -512,6 +512,7 @@ input[type=file]::file-selector-button { appearance: none; font: inherit; color:
 .sale-poster { display: block; width: 100%; height: auto; border: 1px solid var(--control-border); border-radius: 8px; background: var(--paper); }
 .poster-link span { display: block; margin-top: 10px; color: var(--accent); font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
 .form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--line); }
+.sale-detail > .participant + .form-actions { border-top: 0; }
 .error { background: var(--surface); border: 1px solid #b42318; border-inline-start-width: 4px; border-radius: 8px; color: #b42318; padding: 16px; font-size: 13px; line-height: 1.8; margin-block: 16px; }
 .error:empty { display: none; }
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--background); padding: 16px 24px; font-size: 13px; z-index: 5; max-width: calc(100% - 32px); text-align: center; line-height: 1.6; }
