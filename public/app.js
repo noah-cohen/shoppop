@@ -5,6 +5,7 @@ import { SALE_STATUSES, saleStatus, saleIsActive, duplicateSale } from './sale-s
 import { FAVORITES_KEY, readFavorites, toggleFavorite, writeFavorites } from './favorites.js';
 import { STORE_WEEKDAYS, emptyWeek, copySundayHours, weeklyHoursError } from './store-hours.js';
 import { filterAdminSales } from './admin-sales.js';
+import { SUBSCRIBER_PREFERENCES, SUBSCRIBER_GENDERS, SUBSCRIBER_AGES, renderSubscribers } from './admin-subscribers.js';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -17,6 +18,8 @@ const state = {
   cities: [], excludedCities: [],
   submissions: [], messages: [], subscribers: [],
   adminSaleFilters: { period: '', store: '', city: '', venue: '' },
+  subscriberFilters: { query: '', city: '', gender: '', age: '', preference: '' },
+  subscriberEmailLists: [],
   favorites: { sales: [], stores: [] }, favoritesError: '',
   account: { authenticated: false }, accountMode: 'login',
 };
@@ -492,7 +495,7 @@ function profileFields(profile = {}, email = '') {
     <fieldset class="form-section profile-section"><legend>פרטים אישיים</legend><div class="form-grid profile-personal-grid">
       ${field('שם פרטי', 'firstName', profile.firstName, 'text', true, 'maxlength="80" autocomplete="given-name"')}
       ${field('שם משפחה', 'lastName', profile.lastName, 'text', true, 'maxlength="80" autocomplete="family-name"')}
-      ${field('תאריך לידה', 'birthDate', profile.birthDate, 'date', true, `data-date-min="1900-01-01" data-date-max="${today()}" autocomplete="bday"`)}
+      ${field('תאריך לידה (לא חובה)', 'birthDate', profile.birthDate, 'date', false, `data-date-min="1900-01-01" data-date-max="${today()}" autocomplete="bday"`)}
       <label class="field">מגדר *<select name="gender" required>${options([['female', 'אישה'], ['male', 'גבר'], ['unspecified', 'מעדיפ/ה לא לציין']], profile.gender || '', 'בחירת מגדר')}</select></label>
       ${cityField('עיר', 'city', profile.city || '')}
       ${field('טלפון (לא חובה)', 'phone', profile.phone || '', 'tel', false, 'maxlength="80" autocomplete="tel" dir="ltr"')}
@@ -518,7 +521,7 @@ function profileFromForm(form) {
   return {
     firstName: values.get('firstName'),
     lastName: values.get('lastName'),
-    birthDate: formDate(values.get('birthDate')),
+    birthDate: values.get('birthDate') ? formDate(values.get('birthDate')) : '',
     gender: values.get('gender'),
     city: values.get('city'),
     phone: values.get('phone'),
@@ -584,16 +587,22 @@ function storePage(id) {
     <div class="section-heading"><h2>המכירות הבאות <span class="count">${future.length}</span></h2></div><div class="cards">${future.length ? future.map(s => saleCard(s)).join('') : empty('ניפגש במכירה הבאה', 'עדיין לא פורסמו מכירות נוספות לחנות.')}</div>
     <div class="section-heading"><h2>מכירות שכבר היו <span class="count">${past.length}</span></h2></div><div class="cards">${past.length ? past.map(s => saleCard(s)).join('') : empty('ההיסטוריה מתחילה כאן', 'אין מכירות קודמות לחנות.')}</div>`;
 }
-const adminNames = { stores: 'חנויות', venues: 'אולמות', sales: 'מכירות', submissions: 'בקשות לפרסום', messages: 'הודעות', subscribers: 'רשימות עדכונים' };
-const subscriberGroups = [
-  ['updatesCity', 'מכירות בעיר שלי'],
-  ['updatesFavorites', 'חנויות מועדפות'],
-  ['updatesSales', 'מכירות מועדפות'],
-  ['updatesDaily', 'רשימת המכירות היומית'],
-  ['updatesOutlet', 'מכירות אאוטלט'],
-  ['adsConsent', 'תוכן פרסומי'],
-];
-const subscriberRows = members => members.map(item => `<article class="admin-row"><div><strong><bdi>${esc(item.email)}</bdi></strong><small>${esc(`${item.profile.firstName} ${item.profile.lastName}`)} · ${esc(item.profile.city)}</small></div></article>`).join('');
+const adminNames = { stores: 'חנויות', venues: 'אולמות', sales: 'מכירות', submissions: 'בקשות לפרסום', messages: 'הודעות', subscribers: 'נרשמים, מיילים וחתכים' };
+function subscriberToolbar() {
+  const filters = state.subscriberFilters;
+  const cities = [...new Set(state.subscribers.map(item => item.profile?.city || 'לא צוין'))].sort((a, b) => a.localeCompare(b, 'he'));
+  return `<div class="toolbar subscriber-toolbar"><label class="filter-field"><span>חיפוש נרשם</span><input type="search" data-subscriber-filter="query" value="${esc(filters.query)}" placeholder="שם, מייל או טלפון"></label>${[
+    ['city', 'עיר', cities.map(city => [city, city])],
+    ['gender', 'מגדר', SUBSCRIBER_GENDERS],
+    ['age', 'גיל', SUBSCRIBER_AGES.map(age => [age, age])],
+    ['preference', 'בחרו בעדכון / הסכימו', SUBSCRIBER_PREFERENCES],
+  ].map(([key, label, choices]) => `<label class="filter-field"><span>${label}</span><select data-subscriber-filter="${key}">${options(choices, filters[key], 'הכול')}</select></label>`).join('')}<button type="button" class="clear" data-action="clear-subscriber-filters">ניקוי סינון</button></div>`;
+}
+function subscriberResults() {
+  const result = renderSubscribers(state.subscribers, state.messages, state.subscriberFilters, today(), esc);
+  state.subscriberEmailLists = result.emailLists;
+  return result.html;
+}
 const messageClock = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', year: 'numeric',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -620,15 +629,7 @@ function adminResults() {
     ? filterAdminSales(state.data.sales, state.adminSaleFilters, state.data.venues, today()) : state.data[type];
   const heading = `<div class="section-heading"><h2>${adminNames[type]}</h2>${type === 'sales' ? `<span class="hint" role="status">${records.length} מתוך ${state.data.sales.length} מכירות</span>` : ''}${type === 'submissions' ? '<span class="hint">פרטי קשר ומודעות בבקשות גלויים למנהלת בלבד.</span>' : type === 'messages' ? '<button type="button" class="secondary" data-action="refresh-messages">רענון הודעות</button>' : type === 'subscribers' ? `<span class="hint">${records.length} חשבונות רשומים</span>` : `<button class="primary" data-action="add" data-type="${type}">הוספת ${singular[type]}</button>`}</div>`;
   if (type === 'messages') return `${heading}<p class="hint">פניות מטופס יצירת הקשר. ההודעות ופרטי הקשר פרטיים למנהלת בלבד; לא נשלחת הודעה למייל.</p>${records.length ? records.map(item => `<article class="admin-row${item.read ? '' : ' unread-message'}"><div><strong>${esc(item.subject)}</strong><small>${esc(item.name)} · ${esc(messageDate(item.created))} · ${item.read ? 'נקראה' : 'חדשה'}</small></div><button type="button" class="secondary" data-action="open-message" data-id="${item.id}">פתיחת הודעה</button></article>`).join('') : empty('אין עדיין הודעות', 'פניות שישלחו דרך טופס יצירת הקשר יופיעו כאן.')}`;
-  if (type === 'subscribers') return `${heading}<p class="hint">הרשימות פרטיות למנהלת ומציגות את המיילים לפי הבחירות שנשמרו בחשבון. האתר אינו שולח אליהן מיילים. בהעתקת כתובות מומלץ להדביק אותן בעותק מוסתר (Bcc), כדי לשמור על פרטיות הנרשמות.</p>${subscriberGroups.map(([key, label]) => {
-    const members = records.filter(item => item.profile[key]);
-    const cities = key === 'updatesCity' ? [...new Set(members.map(item => item.profile.city))].sort((a, b) => a.localeCompare(b, 'he')) : [];
-    const rows = cities.length ? cities.map(city => {
-      const residents = members.filter(item => item.profile.city === city);
-      return `<section class="subscriber-city"><div class="section-heading"><h4>${esc(city)} <span class="count">${residents.length}</span></h4><button type="button" class="secondary" data-action="copy-city-emails" data-city="${esc(city)}" aria-label="העתקת המיילים של ${esc(city)}">העתקת המיילים</button></div>${subscriberRows(residents)}</section>`;
-    }).join('') : subscriberRows(members);
-    return `<section class="detail-panel"><div class="section-heading"><h3>${label}</h3><span class="count">${members.length}</span>${key === 'updatesCity' ? `<button type="button" class="secondary" data-action="copy-city-emails"${members.length ? '' : ' disabled'}>העתקת כל המיילים ברשימה</button>` : ''}</div>${members.length ? rows : '<p class="hint">אין נרשמים ברשימה זו.</p>'}</section>`;
-  }).join('')}`;
+  if (type === 'subscribers') return `${heading}<p class="hint">המידע פרטי למנהלת בלבד. האתר אינו שולח מיילים. מומלץ להדביק כתובות בעותק מוסתר (Bcc); שליחת פרסומות רק למי שהסכימו במפורש.</p><button type="button" class="secondary" data-action="refresh-subscribers">רענון נרשמים ומיילים</button>${subscriberToolbar()}<div id="subscriber-results">${subscriberResults()}</div>`;
   return `${heading}${records.length ? records.map(item => type === 'submissions' ? `<article class="admin-row"><div><strong>${esc(item.title)}</strong><small>${esc(item.storeNames.join(' · '))} — ${esc(item.city)} · ${item.status === 'pending' ? 'ממתינה לאישור' : item.status === 'approved' ? 'אושרה' : 'נדחתה'}</small></div><button class="secondary" data-action="review-submission" data-id="${item.id}">${item.status === 'pending' ? 'פתיחה והעברה ליצירת מכירה' : 'בדיקת הבקשה'}</button></article>` : `<article class="admin-row"><div><strong>${esc(item.title || item.name)}</strong><small>${type === 'sales' ? `${esc(venueById(item.venueId)?.name)} · ${esc(venueById(item.venueId)?.city)} · ${dateMarkup(item.days[0].date)}${item.days.length > 1 ? ` — ${dateMarkup(item.days.at(-1).date)}` : ''} · ${item.stores.length} חנויות` : type === 'venues' ? `${esc(item.city)} · ${esc(item.address)}` : esc(item.categories.join(' · '))}</small>${type === 'sales' ? statusBlock(item) : ''}</div><div class="actions">${type === 'sales' ? `<button class="secondary" data-action="duplicate-sale" data-id="${item.id}">שכפול לתאריכים חדשים</button>` : ''}<button class="secondary" data-action="edit" data-type="${type}" data-id="${item.id}">עריכה</button><button class="danger" data-action="delete" data-type="${type}" data-id="${item.id}">מחיקה</button></div></article>`).join('') : type === 'sales' && state.data.sales.length ? empty('לא נמצאו מכירות לסינון הזה', 'אפשר לשנות או לנקות את המסננים כדי להציג מכירות נוספות.') : empty('עדיין אין כאן רשומות', type === 'submissions' ? 'בקשות שיישלחו דרך האתר יופיעו כאן לבדיקה.' : 'התחילי בהוספה באמצעות הכפתור למעלה.')}`;
 }
 function adminPage() {
@@ -1054,6 +1055,11 @@ function render() {
   }
 }
 document.addEventListener('input', event => {
+  if (event.target.matches('input[data-subscriber-filter]')) {
+    state.subscriberFilters[event.target.dataset.subscriberFilter] = event.target.value;
+    document.querySelector('#subscriber-results').innerHTML = subscriberResults();
+    return;
+  }
   const editedSale = event.target.closest('#entity-form[data-type="sales"]');
   if (editedSale && !event.target.matches('[type=search]')) editedSale.dataset.dirty = 'true';
   if (event.target.closest('[data-weekday]')) { updateWeekDay(event.target.closest('[data-weekday]')); return; }
@@ -1170,6 +1176,11 @@ document.addEventListener('input', event => {
   if (form) updateSubmit(form);
 });
 document.addEventListener('change', event => {
+  if (event.target.matches('select[data-subscriber-filter]')) {
+    state.subscriberFilters[event.target.dataset.subscriberFilter] = event.target.value;
+    document.querySelector('#subscriber-results').innerHTML = subscriberResults();
+    return;
+  }
   const form = event.target.closest('form');
   if (!form) return;
   if (event.target.closest('[data-update-preferences]')) {
@@ -1303,17 +1314,36 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, id, type, scope } = button.dataset;
-  if (action === 'copy-city-emails') {
+  if (action === 'subscriber-expand') {
+    document.querySelectorAll('#subscriber-results details').forEach(details => { details.open = button.dataset.open === 'true'; });
+    return;
+  }
+  if (action === 'clear-subscriber-filters') {
+    Object.keys(state.subscriberFilters).forEach(key => { state.subscriberFilters[key] = ''; });
+    adminPage();
+    return;
+  }
+  if (action === 'refresh-subscribers') {
+    button.disabled = true;
+    try {
+      const [subscribers, messages] = await Promise.all([api('subscribers'), api('messages')]);
+      state.subscribers = subscribers;
+      state.messages = messages;
+      adminPage();
+      toast('הנרשמים והמיילים עודכנו');
+    } catch (error) { toast(error.message); }
+    finally { button.disabled = false; }
+    return;
+  }
+  if (action === 'copy-subscriber-emails') {
     if (!state.authenticated) { toast('יש להתחבר כמנהלת'); return; }
-    const city = button.dataset.city;
-    const emails = [...new Set(state.subscribers
-      .filter(item => item.profile.updatesCity && (!city || item.profile.city === city))
-      .map(item => item.email.trim().toLowerCase()))];
+    const emails = state.subscriberEmailLists[Number(button.dataset.emailList)];
+    if (!emails) { toast('הרשימה אינה זמינה. יש לרענן את הנרשמים.'); return; }
     if (!emails.length) { toast('אין כתובות מייל להעתקה'); return; }
     button.disabled = true;
     try {
       await navigator.clipboard.writeText(emails.join(', '));
-      toast(`${emails.length} כתובות מייל הועתקו${city ? ` — ${city}` : ''}`);
+      toast(`${emails.length} כתובות מייל הועתקו`);
     } catch (error) {
       console.error('Could not copy subscriber emails', error);
       openDialog('לא ניתן להעתיק אוטומטית', `<p>הדפדפן לא אפשר העתקה. אפשר להעתיק את הכתובות ידנית ולהדביק בעותק מוסתר (Bcc).</p><label class="field">כתובות מייל להעתקה<textarea readonly dir="ltr" rows="4">${esc(emails.join(', '))}</textarea></label>`);
@@ -1546,7 +1576,7 @@ document.addEventListener('click', async event => {
         catch { openDialog('קישור לשיתוף המכירה', `${field('העתיקו את הקישור', 'shareUrl', url, 'text', false, 'readonly dir="ltr"')}`); }
       }
     }
-    if (action === 'logout') { await api('logout', 'POST', {}); state.authenticated = false; state.messages = []; state.submissions = []; state.subscribers = []; adminPage(); }
+    if (action === 'logout') { await api('logout', 'POST', {}); state.authenticated = false; state.messages = []; state.submissions = []; state.subscribers = []; state.subscriberEmailLists = []; adminPage(); }
     if (action === 'user-logout') {
       const accountCity = state.account.profile?.city;
       await api('account/logout', 'POST', {});

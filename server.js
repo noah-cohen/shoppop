@@ -85,8 +85,9 @@ const profileValue = value => {
   const lastName = text('lastName', 'שם משפחה');
   const birthDate = typeof value?.birthDate === 'string' ? value.birthDate : '';
   const parsedBirthDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) ? new Date(`${birthDate}T12:00:00Z`) : null;
-  if (!parsedBirthDate || Number.isNaN(parsedBirthDate.valueOf()) || parsedBirthDate.toISOString().slice(0, 10) !== birthDate
-    || birthDate > new Date().toISOString().slice(0, 10) || birthDate < '1900-01-01') {
+  if ((value?.birthDate !== undefined && typeof value.birthDate !== 'string')
+    || (birthDate && (!parsedBirthDate || Number.isNaN(parsedBirthDate.valueOf()) || parsedBirthDate.toISOString().slice(0, 10) !== birthDate
+    || birthDate > new Date().toISOString().slice(0, 10) || birthDate < '1900-01-01'))) {
     throw new InputError('יש להזין תאריך לידה תקין');
   }
   if (!['female', 'male', 'unspecified'].includes(value?.gender)) throw new InputError('יש לבחור מגדר');
@@ -337,8 +338,8 @@ const server = http.createServer(async (req, res) => {
       if (!await isAdmin(db, req)) return json(res, 401, { error: 'יש להתחבר כמנהלת' });
       if (path === '/api/subscribers' && req.method === 'GET') {
         const rows = await db.prepare(`SELECT users.email,users.created,user_profiles.data
-          FROM users JOIN user_profiles ON user_profiles.user_id=users.id ORDER BY users.created DESC`).all();
-        return json(res, 200, rows.map(({ data, ...row }) => ({ ...row, profile: JSON.parse(data) })));
+          FROM users LEFT JOIN user_profiles ON user_profiles.user_id=users.id ORDER BY users.created DESC,users.id DESC`).all();
+        return json(res, 200, rows.map(({ data, ...row }) => ({ ...row, profile: data ? JSON.parse(data) : null })));
       }
       if (path === '/api/messages' && req.method === 'GET') {
         const items = (await db.prepare('SELECT id,data,created,is_read FROM messages ORDER BY id DESC').all())
@@ -457,6 +458,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 405, { error: 'פעולה לא נתמכת' });
     }
     const files = { '/': 'index.html', '/favicon.svg': 'favicon.svg', '/app.js': 'app.js', '/admin-sales.js': 'admin-sales.js', '/style.css': 'style.css', '/options.js': 'options.js', '/dates.js': 'dates.js', '/cities.js': 'cities.js', '/sale-status.js': 'sale-status.js', '/favorites.js': 'favorites.js', '/store-hours.js': 'store-hours.js', '/cities.json': 'cities.json', '/Rubik.ttf': 'Rubik.ttf', '/Rubik-LICENSE.txt': 'Rubik-LICENSE.txt', '/Heebo.ttf': 'Heebo.ttf', '/Heebo-LICENSE.txt': 'Heebo-LICENSE.txt' };
+    files['/admin-subscribers.js'] = 'admin-subscribers.js';
     if (!files[path] || !['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(404); return res.end('Not found');
     }

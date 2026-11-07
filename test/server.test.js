@@ -119,6 +119,10 @@ test('persistent calendar API and administrator flows', async t => {
     assert.equal(cities.headers.get('content-type'), 'application/json; charset=utf-8');
     assert.ok((await cities.json()).cities.length > 1000);
     assert.equal((await fetch(`${base}/options.js`)).status, 200);
+    const subscribersModule = await fetch(`${base}/admin-subscribers.js`);
+    assert.equal(subscribersModule.status, 200);
+    assert.match(subscribersModule.headers.get('content-type'), /javascript/);
+    assert.match(await subscribersModule.text(), /export function renderSubscribers/);
     const dates = await fetch(`${base}/dates.js`);
     assert.equal(dates.status, 200);
     assert.match(dates.headers.get('content-type'), /javascript/);
@@ -156,16 +160,21 @@ test('persistent calendar API and administrator flows', async t => {
     for (const phone of ['123456', 'abcdefg', true, '1'.repeat(81), '123-456']) {
       assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile: { ...profile, phone } }, false)).status, 400);
     }
-    const registration = await accountRequest('account/register', 'POST', { email: 'User@Example.com', password: userPassword, profile }, false);
+    for (const birthDate of ['2000-02-30', '1899-12-31', '9999-12-31', 'invalid', true, null]) {
+      assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile: { ...profile, birthDate } }, false)).status, 400);
+    }
+    const { birthDate, ...profileWithoutBirthDate } = profile;
+    const registration = await accountRequest('account/register', 'POST', { email: 'User@Example.com', password: userPassword, profile: profileWithoutBirthDate }, false);
     assert.equal(registration.status, 201);
     assert.match(registration.cookie, /user_session=/);
     assert.match(registration.cookie, /HttpOnly/);
     assert.match(registration.cookie, /SameSite=Strict/);
     userCookie = registration.cookie.split(';')[0];
     assert.equal((await accountRequest('account/register', 'POST', { email, password: userPassword, profile }, false)).status, 409);
-    const storedProfile = { ...profile, phone: '' };
+    const storedProfile = { ...profile, birthDate: '', phone: '' };
     assert.deepEqual((await accountRequest('account')).data, { authenticated: true, email, profile: storedProfile });
     assert.equal((await request('subscribers', 'GET', undefined, false)).status, 401);
+    assert.equal((await accountRequest('subscribers')).status, 401);
     assert.deepEqual((await request('subscribers')).data.map(item => ({
       email: item.email,
       profile: item.profile,
@@ -178,6 +187,14 @@ test('persistent calendar API and administrator flows', async t => {
     assert.deepEqual((await accountRequest('account/profile', 'PUT', { ...updatedProfile, phone: ` ${updatedProfile.phone} ` })).data, updatedProfile);
     assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
     assert.deepEqual((await request('subscribers')).data[0].profile, updatedProfile);
+    for (const birthDate of ['2000-02-30', '1899-12-31', '9999-12-31', 'invalid', true, null]) {
+      assert.equal((await accountRequest('account/profile', 'PUT', { ...updatedProfile, birthDate })).status, 400);
+    }
+    assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
+    const clearedBirthDate = { ...updatedProfile, birthDate: '' };
+    assert.deepEqual((await accountRequest('account/profile', 'PUT', clearedBirthDate)).data, clearedBirthDate);
+    assert.deepEqual((await accountRequest('account')).data.profile, clearedBirthDate);
+    assert.deepEqual((await accountRequest('account/profile', 'PUT', updatedProfile)).data, updatedProfile);
     assert.ok(!JSON.stringify((await request('data', 'GET', undefined, false)).data).includes(updatedProfile.phone));
     assert.equal((await accountRequest('account/profile', 'PUT', { ...updatedProfile, phone: 'invalid' })).status, 400);
     assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
@@ -195,6 +212,22 @@ test('persistent calendar API and administrator flows', async t => {
     assert.deepEqual((await accountRequest('account')).data.profile, updatedProfile);
     assert.equal((await accountRequest('account/request-code', 'POST', { email }, false)).status, 404);
     assert.equal((await accountRequest('account/reset/request', 'POST', { email }, false)).status, 404);
+  });
+  await t.test('administrator registrants include legacy accounts without profiles and exclude private data from public responses', async () => {
+    const provider = databaseUrl ? await openStorage({ databaseUrl }) : null;
+    const storage = provider ? await provider.connect() : openDatabase(directory);
+    try {
+      await storage.prepare('INSERT INTO users (email,created,last_login) VALUES (?,?,?)').run('legacy@example.com', Date.now(), Date.now());
+      const { data } = await request('subscribers');
+      assert.equal(data.length, 2);
+      assert.deepEqual(data.find(item => item.email === 'legacy@example.com').profile, null);
+      assert(data.some(item => item.email === 'user@example.com' && item.profile));
+      assert(!JSON.stringify((await request('data', 'GET', undefined, false)).data).includes('legacy@example.com'));
+    } finally {
+      await storage.prepare('DELETE FROM users WHERE email=?').run('legacy@example.com');
+      storage.close();
+      if (provider) await provider.close();
+    }
   });
   await t.test('contact messages stay private, support read state and limit public submissions', async () => {
     const data = { name: 'Private message sender', email: 'sender@example.com', phone: '', subject: 'Private subject', message: '<b>Private message</b>\nSecond line', read: true };

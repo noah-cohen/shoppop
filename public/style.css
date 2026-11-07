@@ -269,7 +269,9 @@ textarea { resize: vertical; min-height: 104px; }
 .detail-panel h2 { font-size: 22px; }
 .detail-panel h3 { font-size: 24px; margin-block: 0 12px; }
 .detail-panel p { font-size: 14px; line-height: 1.8; }
-.contact-publish { display: flex; justify-content: space-between; align-items: center; gap: 24px; border-color: var(--fuchsia); border-inline-start-color: var(--fuchsia); }
+.page-heading:has(+ .contact-publish) { padding-bottom: 0; }
+.page-heading:has(+ .contact-publish) h1 { margin-bottom: 0; }
+.contact-publish { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 12px; border-color: var(--fuchsia); border-inline-start-color: var(--fuchsia); }
 .contact-publish > div { min-width: 0; }
 .contact-publish h2, .contact-publish p { margin-block: 0; }
 .contact-publish p { margin-top: 8px; }
@@ -360,8 +362,28 @@ dialog::backdrop { background: #0009; }
 .account-tabs a.active { color: var(--background); background: var(--ink); }
 .account-page-heading { max-width: 900px; margin-inline: auto; }
 .account-profile-form { padding-bottom: 20px; }
-.subscriber-city + .subscriber-city { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
-.subscriber-city h4 { margin: 0; font-size: 16px; }
+.toolbar.subscriber-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 20px; }
+.toolbar.subscriber-toolbar .clear { grid-column: auto; }
+.subscriber-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+.subscriber-stats > div { border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--surface); }
+.subscriber-stats strong { display: block; font-size: 32px; }
+.subscriber-stats span { font-size: 13px; }
+.subscriber-list { margin-block: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.subscriber-list > summary { padding: 18px; font-weight: 600; cursor: pointer; overflow-wrap: anywhere; }
+.subscriber-list-content { padding: 0 18px 18px; }
+.subscriber-list-content > button { margin-block: 8px; }
+.subscriber-person { border-top: 1px solid var(--line); padding-block: 12px; overflow-wrap: anywhere; }
+.subscriber-person summary { cursor: pointer; line-height: 1.8; }
+.subscriber-person summary span { display: block; font-size: 12px; color: var(--muted); }
+.subscriber-person-info { font-size: 13px; line-height: 1.8; }
+.subscriber-email { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-block: 12px; overflow-wrap: anywhere; }
+.subscriber-email span { font-size: 12px; color: var(--muted); }
+.subscriber-table-wrap { overflow-x: auto; padding: 0 18px 18px; }
+.subscriber-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.subscriber-table caption { text-align: start; padding-block: 12px; color: var(--muted); }
+.subscriber-table th, .subscriber-table td { padding: 12px; border-bottom: 1px solid var(--line); text-align: start; }
+.subscriber-table tbody tr:last-child { font-weight: 600; background: var(--paper); }
+@media (max-width: 700px) { .toolbar.subscriber-toolbar { grid-template-columns: 1fr; } }
 .profile-sections { display: grid; gap: 22px; }
 .profile-sections .form-section { margin-top: 0; background: var(--surface); }
 .profile-section legend { padding-inline: 10px; font-family: var(--heading-font); font-size: 24px; font-weight: 750; color: var(--ink); }
